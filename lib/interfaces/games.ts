@@ -1,8 +1,8 @@
-export interface IUserGames {
-  games: IChessGame[];
+export interface IUserGamesRes {
+  games: IChessGameRes[];
 }
 
-export interface IChessGame {
+export interface IChessGameRes {
   url: string;
   pgn: string;
   time_control: string;
@@ -29,4 +29,42 @@ interface Player {
   "@id": string;
   username: string;
   uuid: string;
+}
+
+export interface IGame {
+  isWon: boolean;
+  isWhite: boolean;
+  opponent: {
+    name: string;
+    rating: number;
+    result: string;
+    profile: string;
+  };
+  gameDetails: {
+    result: string;
+    fenArr: string[]; // This array appears empty, but it's likely used for storing FEN strings
+    opening: string | undefined;
+    ecoUrl: string;
+  };
+  url: string;
+  pgn: string;
+  timeControl: string;
+  endTime: number;
+  rated: boolean;
+  players: {
+    white: {
+      username: string;
+      rating: number;
+      result: string;
+      profile: string;
+    };
+    black: {
+      username: string;
+      rating: number;
+      result: string;
+      profile: string;
+    };
+  };
+  uuid: string;
+  timeClass: string;
 }

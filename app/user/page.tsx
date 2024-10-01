@@ -1,4 +1,4 @@
-import { IChessGame, IUserGames } from "@/lib/interfaces/games";
+import { IGame } from "@/lib/interfaces/games";
 import { fetchGames } from "@/lib/userUtils";
 import React from "react";
 
@@ -9,11 +9,12 @@ interface IProps {
 }
 
 const UserPage = async (props: IProps) => {
-  const data: IUserGames = await fetchGames(props.searchParams.userName);
+  const data: IGame[] = await fetchGames(props.searchParams.userName);
+  console.log(data);
   return (
     <main>
-      {data.games.map((g: IChessGame) => (
-        <h2 key={g.uuid}>{g.fen}</h2>
+      {data.map((g: IGame) => (
+        <h2 key={g.uuid}>g</h2>
       ))}
     </main>
   );
