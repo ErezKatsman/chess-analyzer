@@ -110,8 +110,8 @@ export function ChessBoard({ fen, orientation = 'white', className, showCoords =
               <div
                 key={square}
                 className={[
-                  'relative flex items-center justify-center',
-                  light ? 'bg-muted/30 dark:bg-muted/20' : 'bg-muted/60 dark:bg-muted/40',
+                  'relative flex items-center justify-center aspect-square overflow-hidden',
+                  light ? 'bg-[#f0d9b5]' : 'bg-[#b58863]',
                 ].join(' ')}
               >
                 {showRank ? (
@@ -128,11 +128,17 @@ export function ChessBoard({ fen, orientation = 'white', className, showCoords =
 
                 {piece ? (
                   <span
-                    className="leading-none select-none"
+                    className="w-full h-full flex items-center justify-center leading-none select-none"
                     style={{
                       fontSize: 'clamp(22px, 5vw, 44px)',
                       fontFamily:
                         'ui-sans-serif, system-ui, -apple-system, Segoe UI Symbol, Apple Color Emoji, Noto Color Emoji',
+                      // white pieces: white fill + dark outline; black pieces: dark fill + light outline
+                      color: piece.color === 'w' ? '#ffffff' : '#1a1a1a',
+                      textShadow:
+                        piece.color === 'w'
+                          ? '0 0 2px #000, 0 1px 3px rgba(0,0,0,0.9)'
+                          : '0 0 2px rgba(255,255,255,0.9), 0 1px 3px rgba(255,255,255,0.6)',
                     }}
                   >
                     {pieceToUnicode(piece)}

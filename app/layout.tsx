@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export const metadata: Metadata = {
   title: {
@@ -18,7 +19,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-background text-foreground antialiased">{children}</body>
+      <head>
+        {/* apply saved theme before first paint to avoid flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t=localStorage.getItem('theme');if(t==='light'){document.documentElement.classList.remove('dark')}else{document.documentElement.classList.add('dark')}})()`,
+          }}
+        />
+      </head>
+      <body className="min-h-screen bg-background text-foreground antialiased">
+        <ThemeToggle />
+        {children}
+      </body>
     </html>
   );
 }
