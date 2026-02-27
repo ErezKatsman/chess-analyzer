@@ -1,96 +1,82 @@
-import { IChessGameRes, IGame, IUserGamesRes } from "./interfaces/games";
+// lib/userUtils.ts
+import type { IGame } from './interfaces/games';
+import {
+  checkUserExists,
+  fetchLatestMonthlyGames,
+  fetchLatestMonthlyGamesWithArchive,
+  fetchMonthlyGames,
+} from './services/chesscom';
 
-export const fetchGames = async (userName: string) => {
-  const res = await fetch(
-    `https://api.chess.com/pub/player/${userName}/games/2024/09`
-  );
-  const data: IUserGamesRes = await res.json();
-  return transformData(data.games, userName);
+export { checkUserExists, fetchMonthlyGames };
+
+export type LatestArchiveGames = {
+  games: IGame[];
+  year: number;
+  month: number;
 };
 
-export const checkAndSetUserExist = async (
-  setIsClickable: React.Dispatch<React.SetStateAction<boolean>>,
-  setError: React.Dispatch<React.SetStateAction<string | null>>,
-  userName: string
-) => {
-  const res = await fetch(`https://api.chess.com/pub/player/${userName}`);
+function normalizeUserName(raw: string): string {
+  const value = raw.trim();
+  if (!value) return '';
 
-  if (res.ok) {
-    const data = await res.json();
-    if (data && data.player_id) {
+  try {
+    return decodeURIComponent(value).trim();
+  } catch {
+    return value;
+  }
+}
+
+// generic setter types so this file doesn't need to import react types
+type SetBoolean = (next: boolean) => void;
+type SetNullableString = (next: string | null) => void;
+
+// preferred name (keep it exported for new code)
+export async function checkAndSetUserExists(
+  setIsClickable: SetBoolean,
+  setError: SetNullableString,
+  userName: string,
+): Promise<void> {
+  const normalizedUserName = normalizeUserName(userName);
+
+  if (!normalizedUserName) {
+    setIsClickable(false);
+    setError(null);
+    return;
+  }
+
+  try {
+    const exists = await checkUserExists(normalizedUserName);
+
+    if (exists) {
       setIsClickable(true);
       setError(null);
-    } else {
-      setIsClickable(false);
-      setError("User not found. Please try again.");
+      return;
     }
-  } else {
+
     setIsClickable(false);
-    setError("User not found. Please try again.");
+    setError('User not found. Please try again.');
+  } catch {
+    setIsClickable(false);
+    setError('User not found. Please try again.');
   }
-};
+}
 
-const transformData = (data: IChessGameRes[], userName: string): IGame[] => {
-  const tranformed = data.map((game: IChessGameRes) => {
-    const isWhite = game.white.username === userName;
+// backward compatible alias used by hero.tsx (keep until you update hero)
+export const checkAndSetUserExist = checkAndSetUserExists;
 
-    const config: {
-      userColor: "white" | "black";
-      opponentColor: "white" | "black";
-      colorsWin: "white" | "black";
-      colorsLose: "white" | "black";
-    } = {
-      userColor: isWhite ? "white" : "black",
-      opponentColor: !isWhite ? "white" : "black",
-      colorsWin: game.white.result === "win" ? "white" : "black",
-      colorsLose: game.black.result === "win" ? "white" : "black",
-    };
+// backward compatible: now fetches the latest month automatically
+export async function fetchGames(userName: string): Promise<IGame[]> {
+  return fetchLatestMonthlyGames(normalizeUserName(userName));
+}
 
-    const isWon = game[config.userColor].result === "win" ? true : false;
+// new: fetch games + pinned archive year/month
+export async function fetchGamesWithArchive(userName: string): Promise<LatestArchiveGames> {
+  const normalizedUserName = normalizeUserName(userName);
+  const result = await fetchLatestMonthlyGamesWithArchive(normalizedUserName);
 
-    const opponent = {
-      name: game[config.opponentColor].username,
-      rating: game[config.opponentColor].rating,
-      result: game[config.opponentColor].result,
-      profile: game[config.opponentColor]["@id"],
-    };
-
-    const gameDetails = {
-      result: `${game[config.colorsWin].username} won by ${
-        game[config.colorsLose].result
-      }`,
-      fenArr: [],
-      opening: game.eco.split("/").pop()?.replace(/-/g, " "),
-      ecoUrl: game.eco,
-    };
-
-    return {
-      isWon,
-      isWhite,
-      opponent,
-      gameDetails,
-      url: game.url,
-      pgn: game.pgn, // TODO: make pgn `1. e4 e5 2. Nf3 Nc6 ... 1-0`
-      timeControl: game.time_control, // ? check meanining
-      endTime: game.end_time,
-      rated: game.rated, // ? check meanining
-      players: {
-        white: {
-          username: game.white.username,
-          rating: game.white.rating,
-          result: game.white.result,
-          profile: game.white["@id"],
-        },
-        black: {
-          username: game.black.username,
-          rating: game.black.rating,
-          result: game.black.result,
-          profile: game.black["@id"],
-        },
-      },
-      uuid: game.uuid,
-      timeClass: game.time_class,
-    };
-  });
-  return tranformed;
-};
+  return {
+    games: result.games,
+    year: result.year,
+    month: result.month,
+  };
+}

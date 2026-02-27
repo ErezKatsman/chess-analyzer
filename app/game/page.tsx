@@ -1,0 +1,163 @@
+// app/game/page.tsx
+import Link from 'next/link';
+
+import type { IGame } from '@/lib/interfaces/games';
+import { fetchGamesWithArchive, fetchMonthlyGames } from '@/lib/userUtils';
+import { GameReplay } from '@/components/GameReplay';
+import { getSanMovesFromPgn } from '@/lib/chess/moves';
+
+export const dynamic = 'force-dynamic';
+
+type SearchParam = string | string[] | undefined;
+
+type GamePageProps = {
+  searchParams: {
+    userName?: SearchParam;
+    uuid?: SearchParam;
+    year?: SearchParam;
+    month?: SearchParam;
+  };
+};
+
+function normalizeValue(raw: SearchParam): string {
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  const value = (first ?? '').trim();
+  if (!value) return '';
+
+  try {
+    return decodeURIComponent(value).trim();
+  } catch {
+    return value;
+  }
+}
+
+function parseIntSafe(raw: string): number {
+  const value = raw.trim();
+  if (!value) return 0;
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function PageCard({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-background">
+      <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="rounded-2xl border bg-card p-6 shadow-sm">
+          {title ? <h1 className="text-2xl font-semibold">{title}</h1> : null}
+          {children}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default async function GamePage({ searchParams }: GamePageProps) {
+  const userName = normalizeValue(searchParams.userName);
+  const uuid = normalizeValue(searchParams.uuid);
+
+  const year = parseIntSafe(normalizeValue(searchParams.year));
+  const month = parseIntSafe(normalizeValue(searchParams.month));
+
+  if (!userName || !uuid) {
+    return (
+      <PageCard title="missing params">
+        <p className="mt-2 text-sm text-muted-foreground">
+          open this page from the games list (analyze button).
+        </p>
+        <div className="mt-4">
+          <Link className="text-sm underline underline-offset-4" href="/">
+            back home
+          </Link>
+        </div>
+      </PageCard>
+    );
+  }
+
+  let games: IGame[] = [];
+  let archiveYear = year;
+  let archiveMonth = month;
+  let errorMessage: string | null = null;
+
+  try {
+    if (archiveYear && archiveMonth) {
+      games = await fetchMonthlyGames({ userName, year: archiveYear, month: archiveMonth });
+    } else {
+      const latest = await fetchGamesWithArchive(userName);
+      games = latest.games;
+      archiveYear = latest.year;
+      archiveMonth = latest.month;
+    }
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : 'failed to fetch games';
+  }
+
+  if (errorMessage) {
+    return (
+      <PageCard>
+        <div className="text-sm font-semibold text-destructive">error</div>
+        <div className="mt-2 text-sm text-muted-foreground">{errorMessage}</div>
+        <div className="mt-4">
+          <Link
+            className="text-sm underline underline-offset-4"
+            href={`/user?userName=${encodeURIComponent(userName)}`}
+          >
+            back to games list
+          </Link>
+        </div>
+      </PageCard>
+    );
+  }
+
+  const game = games.find((g) => g.uuid === uuid);
+
+  if (!game) {
+    return (
+      <PageCard title="game not found">
+        <p className="mt-2 text-sm text-muted-foreground">
+          this can happen if the game is not in the selected archive month.
+        </p>
+        <div className="mt-4">
+          <Link
+            className="text-sm underline underline-offset-4"
+            href={`/user?userName=${encodeURIComponent(userName)}`}
+          >
+            back to games list
+          </Link>
+        </div>
+      </PageCard>
+    );
+  }
+
+  const sanMoves = getSanMovesFromPgn(game.pgn);
+
+  const gameOptions = games.map((g) => ({
+    uuid: g.uuid,
+    label: `${g.opponent.name} • ${g.timeClass} • ${g.gameDetails.result}`,
+  }));
+
+  return (
+    <main className="min-h-screen bg-background">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <GameReplay
+          userName={userName}
+          uuid={game.uuid}
+          opponentName={game.opponent.name}
+          resultText={game.gameDetails.result}
+          gameUrl={game.url}
+          ecoUrl={game.gameDetails.ecoUrl}
+          opening={game.gameDetails.opening}
+          endTime={game.endTime}
+          timeClass={game.timeClass}
+          timeControl={game.timeControl}
+          fenArr={game.gameDetails.fenArr}
+          sanMoves={sanMoves}
+          gameOptions={gameOptions}
+          isWhite={game.isWhite}
+          archiveYear={archiveYear}
+          archiveMonth={archiveMonth}
+        />
+      </div>
+    </main>
+  );
+}
