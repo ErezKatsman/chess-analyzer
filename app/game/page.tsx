@@ -150,6 +150,7 @@ export default async function GamePage({ searchParams }: GamePageProps) {
           endTime={game.endTime}
           timeClass={game.timeClass}
           timeControl={game.timeControl}
+          pgn={game.pgn}
           fenArr={game.gameDetails.fenArr}
           sanMoves={sanMoves}
           gameOptions={gameOptions}
