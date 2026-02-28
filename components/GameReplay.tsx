@@ -147,11 +147,13 @@ export function GameReplay({
   const maxIndex = Math.max(0, fenArr.length - 1);
   const [index, setIndex] = React.useState(0);
   const [analysis, setAnalysis] = React.useState<AnalysisState>({ status: 'idle' });
+  const [showBestMove, setShowBestMove] = React.useState(false);
 
-  // reset board position and analysis when game changes
+  // reset board position, analysis, and best-move toggle when game changes
   React.useEffect(() => {
     setIndex(0);
     setAnalysis({ status: 'idle' });
+    setShowBestMove(false);
   }, [uuid]);
 
   const clampedIndex = Math.max(0, Math.min(index, maxIndex));
@@ -277,7 +279,7 @@ export function GameReplay({
             fen={fen}
             orientation={isWhite ? 'white' : 'black'}
             bestMove={
-              analysis.status === 'done'
+              showBestMove && analysis.status === 'done'
                 ? (analysis.result.evals[clampedIndex]?.bestMove ?? null)
                 : null
             }
@@ -324,8 +326,21 @@ export function GameReplay({
               end
             </Button>
 
-            <div className="ml-auto text-xs text-muted-foreground">
-              ply <span className="font-semibold text-foreground">{clampedIndex}</span>/{maxIndex}
+            <div className="ml-auto flex items-center gap-2">
+              {analysis.status === 'done' ? (
+                <Button
+                  type="button"
+                  variant={showBestMove ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setShowBestMove((v) => !v)}
+                  title="toggle best move arrow"
+                >
+                  best move
+                </Button>
+              ) : null}
+              <span className="text-xs text-muted-foreground">
+                ply <span className="font-semibold text-foreground">{clampedIndex}</span>/{maxIndex}
+              </span>
             </div>
           </div>
 
