@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import { ChessBoard } from '@/components/ChessBoard';
 import { EvalGraph } from '@/components/EvalGraph';
+import { DrillPanel } from '@/components/DrillPanel';
 import { Button } from '@/components/ui/button';
 import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
 
@@ -148,12 +149,15 @@ export function GameReplay({
   const [index, setIndex] = React.useState(0);
   const [analysis, setAnalysis] = React.useState<AnalysisState>({ status: 'idle' });
   const [showBestMove, setShowBestMove] = React.useState(false);
+  // null = replay mode; number = active drill index
+  const [drillIndex, setDrillIndex] = React.useState<number | null>(null);
 
-  // reset board position, analysis, and best-move toggle when game changes
+  // reset board position, analysis, best-move toggle, and drill mode when game changes
   React.useEffect(() => {
     setIndex(0);
     setAnalysis({ status: 'idle' });
     setShowBestMove(false);
+    setDrillIndex(null);
   }, [uuid]);
 
   const clampedIndex = Math.max(0, Math.min(index, maxIndex));
@@ -177,6 +181,30 @@ export function GameReplay({
       set.add(ply);
     }
     return set;
+  }, [analysis]);
+
+  // build drill list from blunders that have a bestMove from the engine
+  const drills = React.useMemo(() => {
+    if (analysis.status !== 'done') return [];
+    return analysis.result.turningPoints
+      .filter((tp) => tp.type === 'blunder')
+      .flatMap((tp) => {
+        // ply index of the position BEFORE the blunder
+        const plyBefore = tp.side === 'white'
+          ? (tp.moveNumber - 1) * 2
+          : (tp.moveNumber - 1) * 2 + 1;
+        const bestMove = analysis.result.evals[plyBefore]?.bestMove;
+        if (!bestMove) return [];
+        return [{
+          fen: tp.positionHint,
+          bestMove,
+          side: tp.side,
+          moveNumber: tp.moveNumber,
+          oneLineReason: tp.oneLineReason,
+          evalBefore: tp.evalBefore,
+          evalAfter: tp.evalAfter,
+        }];
+      });
   }, [analysis]);
 
   // fast lookup: `${moveNumber}-${side}` → TurningPoint
@@ -237,6 +265,20 @@ export function GameReplay({
   };
 
   const isAnalyzing = analysis.status === 'loading';
+
+  // drill mode: render DrillPanel instead of the normal replay UI
+  if (drillIndex !== null && drills[drillIndex]) {
+    const drill = drills[drillIndex];
+    return (
+      <DrillPanel
+        {...drill}
+        drillIndex={drillIndex}
+        totalDrills={drills.length}
+        onNext={drillIndex < drills.length - 1 ? () => setDrillIndex(drillIndex + 1) : undefined}
+        onExit={() => setDrillIndex(null)}
+      />
+    );
+  }
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(320px,560px),1fr] items-start">
@@ -491,7 +533,7 @@ export function GameReplay({
         {/* analysis summary — only shown when done */}
         {analysis.status === 'done' ? (
           <div className="mt-4 grid gap-3">
-            <div className="flex flex-wrap gap-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="text-red-500 font-semibold">
                 {analysis.result.turningPoints.filter((t) => t.type === 'blunder').length} blunders
               </span>
@@ -502,6 +544,16 @@ export function GameReplay({
                 {analysis.result.turningPoints.filter((t) => t.type === 'inaccuracy').length}{' '}
                 inaccuracies
               </span>
+              {drills.length > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="ml-auto"
+                  onClick={() => setDrillIndex(0)}
+                >
+                  practice {drills.length} blunder{drills.length > 1 ? 's' : ''}
+                </Button>
+              )}
             </div>
 
             {analysis.result.patterns.length > 0 ? (
