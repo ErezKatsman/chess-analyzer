@@ -48,6 +48,16 @@ export type DrillSeed = {
   successCriteria: string;
 };
 
+// ai-generated explanation for a single blunder or mistake
+export type BlunderExplanation = {
+  // matches `${moveNumber}-${side}` on TurningPoint
+  id: string;
+  // 1-2 sentence plain-english reason why the move was bad
+  explanation: string;
+  // short rule to remember (≤12 words)
+  rule: string;
+};
+
 export type AnalysisSummary = {
   gameId: string;
   meta: {

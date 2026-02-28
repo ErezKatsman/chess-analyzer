@@ -7,7 +7,7 @@ import { ChessBoard } from '@/components/ChessBoard';
 import { EvalGraph } from '@/components/EvalGraph';
 import { DrillPanel } from '@/components/DrillPanel';
 import { Button } from '@/components/ui/button';
-import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
+import type { TurningPoint, Pattern, BlunderExplanation } from '@/lib/interfaces/analysis';
 
 type GameOption = { uuid: string; label: string };
 
@@ -153,14 +153,53 @@ export function GameReplay({
   const [drillIndex, setDrillIndex] = React.useState<number | null>(null);
   // 0-100 progress for the analysis progress bar (timer-driven estimate)
   const [analysisProgress, setAnalysisProgress] = React.useState(0);
+  // ai-generated explanations keyed by `${moveNumber}-${side}`
+  const [explanations, setExplanations] = React.useState<Map<string, BlunderExplanation>>(
+    new Map(),
+  );
+  const [explanationsLoading, setExplanationsLoading] = React.useState(false);
 
-  // reset board position, analysis, best-move toggle, and drill mode when game changes
+  // reset board position, analysis, best-move toggle, drill mode, and explanations on game change
   React.useEffect(() => {
     setIndex(0);
     setAnalysis({ status: 'idle' });
     setShowBestMove(false);
     setDrillIndex(null);
+    setExplanations(new Map());
+    setExplanationsLoading(false);
   }, [uuid]);
+
+  // fetch ai explanations automatically when stockfish analysis finishes
+  React.useEffect(() => {
+    if (analysis.status !== 'done') return;
+
+    const { turningPoints } = analysis.result;
+    const blundersAndMistakes = turningPoints.filter(
+      (tp) => tp.type === 'blunder' || tp.type === 'mistake',
+    );
+    if (blundersAndMistakes.length === 0) return;
+
+    setExplanationsLoading(true);
+
+    fetch('/api/explain', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ turningPoints: blundersAndMistakes }),
+    })
+      .then((res) => res.json())
+      .then((data: { explanations?: BlunderExplanation[] }) => {
+        if (!data.explanations) return;
+        const map = new Map<string, BlunderExplanation>();
+        for (const exp of data.explanations) {
+          map.set(exp.id, exp);
+        }
+        setExplanations(map);
+      })
+      .catch(() => {
+        // silent fail — ui falls back to one-liner
+      })
+      .finally(() => setExplanationsLoading(false));
+  }, [analysis.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // animate progress bar while stockfish is running — fills to 90% over estimated time,
   // then snaps to 100% once analysis completes
@@ -592,6 +631,66 @@ export function GameReplay({
                 </Button>
               )}
             </div>
+
+            {/* blunder + mistake list with ai explanations */}
+            {analysis.result.turningPoints.filter(
+              (tp) => tp.type === 'blunder' || tp.type === 'mistake',
+            ).length > 0 ? (
+              <div className="grid gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <span>key errors</span>
+                  {explanationsLoading ? (
+                    <span className="animate-pulse text-muted-foreground/60">
+                      — ai coach thinking…
+                    </span>
+                  ) : null}
+                </div>
+                {analysis.result.turningPoints
+                  .filter((tp) => tp.type === 'blunder' || tp.type === 'mistake')
+                  .map((tp) => {
+                    const expId = `${tp.moveNumber}-${tp.side}`;
+                    const exp = explanations.get(expId);
+                    return (
+                      <div
+                        key={expId}
+                        className="rounded-lg border bg-background p-3 text-sm cursor-pointer hover:bg-muted/30 transition-colors"
+                        onClick={() => {
+                          // jump board to the position before this error
+                          const ply =
+                            tp.side === 'white'
+                              ? (tp.moveNumber - 1) * 2
+                              : (tp.moveNumber - 1) * 2 + 1;
+                          setIndex(Math.min(maxIndex, ply));
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={tpBadgeClass(tp.type)}>
+                            {tpSymbol(tp.type)} move {tp.moveNumber} ({tp.side})
+                          </span>
+                        </div>
+                        {exp ? (
+                          <>
+                            <p className="mt-1.5 text-sm text-foreground leading-snug">
+                              {exp.explanation}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground italic">
+                              💡 {exp.rule}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {explanationsLoading ? (
+                              <span className="animate-pulse">generating explanation…</span>
+                            ) : (
+                              tp.oneLineReason
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : null}
 
             {analysis.result.patterns.length > 0 ? (
               <div className="grid gap-2">
