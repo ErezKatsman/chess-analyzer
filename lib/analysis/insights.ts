@@ -145,6 +145,8 @@ export function computeTurningPoints(
       evalAfter: evalAfter.cp,
       oneLineReason: buildReason(type, move.san, evalBefore, evalAfter, side),
       positionHint: evalBefore.fen,
+      // uci of the move played — used by the drill intro to show what went wrong
+      movePlayed: move.from + move.to + (move.promotion ?? ''),
     });
   }
 

@@ -264,6 +264,7 @@ export function GameReplay({
         return [{
           fen: tp.positionHint,
           bestMove,
+          blunderMove: tp.movePlayed,
           side: tp.side,
           moveNumber: tp.moveNumber,
           oneLineReason: tp.oneLineReason,

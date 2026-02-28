@@ -12,14 +12,15 @@ const PIECE_NAMES: Record<string, string> = {
 };
 
 export type DrillProps = {
-  fen: string;           // position before the blunder
-  bestMove: string;      // uci e.g. "e2e4"
+  fen: string;              // position before the blunder
+  bestMove: string;         // uci e.g. "e2e4" — the engine's best move
+  blunderMove?: string;     // uci of what was actually played in the game
   side: 'white' | 'black';
   moveNumber: number;
   oneLineReason: string;
   evalBefore: number | null;
   evalAfter: number | null;
-  drillIndex: number;    // 0-based, for "drill 1 of N" display
+  drillIndex: number;       // 0-based, for "drill 1 of N" display
   totalDrills: number;
   onNext?: () => void;
   onExit: () => void;
@@ -28,6 +29,7 @@ export type DrillProps = {
 export function DrillPanel({
   fen,
   bestMove,
+  blunderMove,
   side,
   moveNumber,
   oneLineReason,
@@ -46,10 +48,58 @@ export function DrillPanel({
   const [displayFen, setDisplayFen] = React.useState(fen);
   // true while the wrong-move flash animation is running — disables board interaction
   const [animating, setAnimating] = React.useState(false);
+  // true while the blunder intro replay is showing before the drill starts
+  const [introPlaying, setIntroPlaying] = React.useState(!!blunderMove);
 
   const chess = React.useMemo(() => new Chess(fen), [fen]);
   const playerColor = side === 'white' ? 'w' : 'b';
   const isDone = status === 'correct' || status === 'revealed';
+
+  // compute the san of the blunder move for the intro overlay label
+  const blunderSan = React.useMemo(() => {
+    if (!blunderMove) return null;
+    try {
+      const tmp = new Chess(fen);
+      const result = tmp.move({
+        from: blunderMove.slice(0, 2),
+        to: blunderMove.slice(2, 4),
+        promotion: blunderMove[4] ?? 'q',
+      });
+      return result.san;
+    } catch {
+      return null;
+    }
+  }, [fen, blunderMove]);
+
+  // on mount: play the blunder move for 1.2s so the user sees what went wrong,
+  // then snap back to the starting position and let them find the best move
+  React.useEffect(() => {
+    if (!blunderMove) return;
+
+    const postBlunderFen = (() => {
+      try {
+        const tmp = new Chess(fen);
+        tmp.move({ from: blunderMove.slice(0, 2), to: blunderMove.slice(2, 4), promotion: blunderMove[4] ?? 'q' });
+        return tmp.fen();
+      } catch {
+        return null;
+      }
+    })();
+
+    if (!postBlunderFen) {
+      setIntroPlaying(false);
+      return;
+    }
+
+    setDisplayFen(postBlunderFen);
+
+    const id = setTimeout(() => {
+      setDisplayFen(fen);
+      setIntroPlaying(false);
+    }, 1200);
+
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // apply a uci move on top of the original fen and return the resulting fen
   const applyMove = (uci: string): string => {
@@ -160,16 +210,30 @@ export function DrillPanel({
           <Button variant="outline" size="sm" onClick={onExit}>← back</Button>
         </div>
 
-        {/* red flash overlay while wrong-move animation plays */}
+        {/* board with overlays */}
         <div className="relative">
           <ChessBoard
             fen={displayFen}
             orientation={side}
             selectedSquare={selected}
             bestMove={status === 'revealed' ? bestMove : null}
-            onSquareClick={isDone || animating ? undefined : handleSquareClick}
+            onSquareClick={isDone || animating || introPlaying ? undefined : handleSquareClick}
           />
-          {animating && (
+
+          {/* intro overlay: shows the blunder move with a label */}
+          {introPlaying && (
+            <div
+              className="absolute inset-0 rounded-lg bg-red-500/25 pointer-events-none flex items-end justify-center pb-3"
+              aria-hidden="true"
+            >
+              <span className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white shadow">
+                ✗ {blunderSan ?? 'your move'}
+              </span>
+            </div>
+          )}
+
+          {/* red flash overlay for wrong attempts */}
+          {animating && !introPlaying && (
             <div
               className="absolute inset-0 rounded-lg bg-red-500/20 pointer-events-none animate-pulse"
               aria-hidden="true"
@@ -188,9 +252,22 @@ export function DrillPanel({
 
         <div className="rounded-lg bg-muted p-3">
           <p className="text-xs font-semibold text-muted-foreground mb-1">task</p>
-          <p className="text-sm font-medium">Find the best move for {side}.</p>
-          {status === 'idle' && (
-            <p className="text-xs text-muted-foreground mt-1">click a piece, then a destination square.</p>
+          {introPlaying ? (
+            <>
+              <p className="text-sm font-medium text-red-600 dark:text-red-400">
+                ✗ you played {blunderSan ?? 'this move'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 animate-pulse">
+                rewinding… find the best move instead.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium">Find the best move for {side}.</p>
+              {status === 'idle' && (
+                <p className="text-xs text-muted-foreground mt-1">click a piece, then a destination square.</p>
+              )}
+            </>
           )}
         </div>
 

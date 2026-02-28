@@ -25,6 +25,8 @@ export type TurningPoint = {
   evalAfter: number | null;
   oneLineReason: string;
   positionHint: string;
+  // uci notation of the move that was actually played (e.g. "e2e4")
+  movePlayed: string;
 };
 
 export type Pattern = {
