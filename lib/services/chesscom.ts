@@ -169,3 +169,29 @@ export async function fetchLatestMonthlyGames(userName: string): Promise<IGame[]
   const result = await fetchLatestMonthlyGamesWithArchive(userName);
   return result.games;
 }
+
+export type ArchiveEntry = {
+  year: number;
+  month: number; // 1-12
+};
+
+// returns all available archive months for a user, sorted newest first
+export async function fetchUserArchives(userName: string): Promise<ArchiveEntry[]> {
+  const normalizedUserName = normalizeUserName(userName);
+  if (!normalizedUserName) return [];
+
+  const url = `https://api.chess.com/pub/player/${encodeUserName(normalizedUserName)}/games/archives`;
+  const { res, data } = await fetchJson<ArchivesRes>(url);
+
+  if (!res.ok) return [];
+
+  const archives = Array.isArray(data?.archives) ? data.archives : [];
+
+  return archives
+    .map(parseArchiveYearMonth)
+    .filter((entry): entry is ArchiveEntry => entry !== null)
+    .sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return b.month - a.month;
+    });
+}
