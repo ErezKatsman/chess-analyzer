@@ -273,7 +273,15 @@ export function GameReplay({
         </div>
 
         <div className="mt-4">
-          <ChessBoard fen={fen} orientation={isWhite ? 'white' : 'black'} />
+          <ChessBoard
+            fen={fen}
+            orientation={isWhite ? 'white' : 'black'}
+            bestMove={
+              analysis.status === 'done'
+                ? (analysis.result.evals[clampedIndex]?.bestMove ?? null)
+                : null
+            }
+          />
         </div>
 
         {/* eval graph — shown after analysis completes */}
