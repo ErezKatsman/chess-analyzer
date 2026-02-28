@@ -11,6 +11,10 @@ const INACCURACY_CP = 50;
 // treat a forced mate as a large cp value for loss comparison
 const MATE_CP = 2000;
 
+// if the mover's position is already beyond this (from their perspective),
+// the game is considered decided — suppress inaccuracy/mistake noise
+const DECIDED_POSITION_CP = 500;
+
 // convert a position eval to a numeric cp value (handles mate)
 function toCp(e: PositionEval): number {
   if (e.cp !== null) return e.cp;
@@ -63,6 +67,16 @@ function buildReason(
   }
 }
 
+// returns true when the position is already heavily decided from the mover's perspective.
+// in decided positions, small inaccuracies and mistakes are noise — the game is already over.
+function isDecided(evalBefore: PositionEval, side: 'white' | 'black'): boolean {
+  const sign = side === 'white' ? 1 : -1;
+  const moverCp = sign * toCp(evalBefore);
+  // moverCp > DECIDED_POSITION_CP means mover is already winning by a lot (no need to flag noise)
+  // moverCp < -DECIDED_POSITION_CP means mover is already losing heavily (blunders only matter)
+  return Math.abs(moverCp) > DECIDED_POSITION_CP;
+}
+
 // detect if a move missed a forced mate that was available before
 function isMissedWin(
   before: PositionEval,
@@ -101,16 +115,19 @@ export function computeTurningPoints(
 
     const side: 'white' | 'black' = move.color === 'w' ? 'white' : 'black';
     const loss = cpLossForMover(evalBefore, evalAfter, side);
+    const decided = isDecided(evalBefore, side);
 
     let type: TurningPoint['type'] | null = null;
 
     if (loss >= BLUNDER_CP) {
       type = 'blunder';
-    } else if (loss >= MISTAKE_CP) {
+    } else if (!decided && loss >= MISTAKE_CP) {
+      // skip mistakes in already-decided positions — they are noise
       type = 'mistake';
-    } else if (loss >= INACCURACY_CP) {
+    } else if (!decided && loss >= INACCURACY_CP) {
+      // skip inaccuracies in already-decided positions — they are noise
       type = 'inaccuracy';
-    } else if (isMissedWin(evalBefore, evalAfter, side)) {
+    } else if (!decided && isMissedWin(evalBefore, evalAfter, side)) {
       type = 'missed_win';
     }
 

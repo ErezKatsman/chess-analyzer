@@ -9,7 +9,7 @@ export type PositionEval = {
   bestMove: string | null; // best move in uci notation (e.g. "e2e4")
 };
 
-const DEFAULT_DEPTH = 15;
+const DEFAULT_DEPTH = 18;
 const ENGINE_TIMEOUT_MS = 120_000;
 
 function stockfishBinPath(): string {
