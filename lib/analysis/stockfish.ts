@@ -9,8 +9,10 @@ export type PositionEval = {
   bestMove: string | null; // best move in uci notation (e.g. "e2e4")
 };
 
-const DEFAULT_DEPTH = 18;
-const ENGINE_TIMEOUT_MS = 120_000;
+// milliseconds per position — keeps total analysis time predictable regardless of game length
+// 500ms × 80 positions ≈ 40s for a typical game; quality ≈ depth 12-15 on the lite engine
+const DEFAULT_MOVE_TIME_MS = 500;
+const ENGINE_TIMEOUT_MS = 180_000;
 
 function stockfishBinPath(): string {
   return path.join(
@@ -48,7 +50,7 @@ function parseInfoScore(
 // evaluate a list of fen positions sequentially using one engine instance
 export function evaluateFens(
   fens: string[],
-  depth: number = DEFAULT_DEPTH,
+  moveTimeMs: number = DEFAULT_MOVE_TIME_MS,
 ): Promise<PositionEval[]> {
   if (fens.length === 0) return Promise.resolve([]);
 
@@ -75,7 +77,7 @@ export function evaluateFens(
       lastScoredInfoLine = '';
       state = 'searching';
       engine.stdin.write(`position fen ${fens[index]}\n`);
-      engine.stdin.write(`go depth ${depth}\n`);
+      engine.stdin.write(`go movetime ${moveTimeMs}\n`);
     };
 
     engine.stdout.on('data', (chunk: Buffer) => {
