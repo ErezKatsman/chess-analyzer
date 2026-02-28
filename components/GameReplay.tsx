@@ -271,6 +271,7 @@ export function GameReplay({
     const drill = drills[drillIndex];
     return (
       <DrillPanel
+        key={drillIndex}
         {...drill}
         drillIndex={drillIndex}
         totalDrills={drills.length}
