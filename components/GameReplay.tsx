@@ -151,6 +151,8 @@ export function GameReplay({
   const [showBestMove, setShowBestMove] = React.useState(false);
   // null = replay mode; number = active drill index
   const [drillIndex, setDrillIndex] = React.useState<number | null>(null);
+  // 0-100 progress for the analysis progress bar (timer-driven estimate)
+  const [analysisProgress, setAnalysisProgress] = React.useState(0);
 
   // reset board position, analysis, best-move toggle, and drill mode when game changes
   React.useEffect(() => {
@@ -159,6 +161,31 @@ export function GameReplay({
     setShowBestMove(false);
     setDrillIndex(null);
   }, [uuid]);
+
+  // animate progress bar while stockfish is running — fills to 90% over estimated time,
+  // then snaps to 100% once analysis completes
+  React.useEffect(() => {
+    if (analysis.status === 'done') {
+      setAnalysisProgress(100);
+      return;
+    }
+    if (analysis.status !== 'loading') {
+      setAnalysisProgress(0);
+      return;
+    }
+    // estimated total: ~500ms per position (movetime budget)
+    const totalPositions = sanMoves.length + 1;
+    const estimatedMs = totalPositions * 500;
+    const tickMs = 250;
+    // fill to 90% over estimated time; the last 10% waits for the real response
+    const incrementPerTick = (tickMs / estimatedMs) * 90;
+
+    setAnalysisProgress(0);
+    const id = setInterval(() => {
+      setAnalysisProgress((prev) => Math.min(90, prev + incrementPerTick));
+    }, tickMs);
+    return () => clearInterval(id);
+  }, [analysis.status, sanMoves.length]);
 
   const clampedIndex = Math.max(0, Math.min(index, maxIndex));
   const fen = fenArr[clampedIndex] ?? '';
@@ -452,10 +479,19 @@ export function GameReplay({
           </div>
         ) : null}
 
-        {/* loading banner */}
+        {/* analysis progress bar */}
         {analysis.status === 'loading' ? (
-          <div className="mt-3 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground animate-pulse">
-            running stockfish analysis — this takes a few seconds…
+          <div className="mt-3 rounded-lg border bg-muted/50 px-3 py-3 space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>analyzing {sanMoves.length} moves with stockfish…</span>
+              <span>{Math.round(analysisProgress)}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                style={{ width: `${analysisProgress}%` }}
+              />
+            </div>
           </div>
         ) : null}
 
