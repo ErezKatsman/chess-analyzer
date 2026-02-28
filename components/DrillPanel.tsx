@@ -44,6 +44,8 @@ export function DrillPanel({
   const [hint, setHint] = React.useState('');
   // displayFen changes when the player makes the correct move or we reveal the answer
   const [displayFen, setDisplayFen] = React.useState(fen);
+  // true while the wrong-move flash animation is running — disables board interaction
+  const [animating, setAnimating] = React.useState(false);
 
   const chess = React.useMemo(() => new Chess(fen), [fen]);
   const playerColor = side === 'white' ? 'w' : 'b';
@@ -72,22 +74,32 @@ export function DrillPanel({
     const nextAttempts = attempts + 1;
     setAttempts(nextAttempts);
 
-    if (nextAttempts >= 2) {
-      setDisplayFen(applyMove(bestMove));
-      setStatus('revealed');
-      return;
-    }
+    // flash the wrong move on the board, then snap back / reveal
+    setAnimating(true);
+    setDisplayFen(applyMove(uci));
 
-    // first wrong attempt — hint: name the piece that should move
-    const fromSq = bestMove.slice(0, 2) as ChessSquare;
-    const piece = chess.get(fromSq);
-    const pieceName = piece ? (PIECE_NAMES[piece.type] ?? 'piece') : 'piece';
-    setHint(`Not quite. Think about moving your ${pieceName}.`);
-    setStatus('wrong');
+    setTimeout(() => {
+      setAnimating(false);
+
+      if (nextAttempts >= 2) {
+        // second wrong attempt — reveal best move with arrow
+        setDisplayFen(applyMove(bestMove));
+        setStatus('revealed');
+        return;
+      }
+
+      // first wrong attempt — snap back and show hint
+      setDisplayFen(fen);
+      const fromSq = bestMove.slice(0, 2) as ChessSquare;
+      const piece = chess.get(fromSq);
+      const pieceName = piece ? (PIECE_NAMES[piece.type] ?? 'piece') : 'piece';
+      setHint(`Not quite. Think about moving your ${pieceName}.`);
+      setStatus('wrong');
+    }, 500);
   };
 
   const handleSquareClick = (square: string) => {
-    if (isDone) return;
+    if (isDone || animating) return;
 
     const piece = chess.get(square as ChessSquare);
 
@@ -148,13 +160,22 @@ export function DrillPanel({
           <Button variant="outline" size="sm" onClick={onExit}>← back</Button>
         </div>
 
-        <ChessBoard
-          fen={displayFen}
-          orientation={side}
-          selectedSquare={selected}
-          bestMove={status === 'revealed' ? bestMove : null}
-          onSquareClick={isDone ? undefined : handleSquareClick}
-        />
+        {/* red flash overlay while wrong-move animation plays */}
+        <div className="relative">
+          <ChessBoard
+            fen={displayFen}
+            orientation={side}
+            selectedSquare={selected}
+            bestMove={status === 'revealed' ? bestMove : null}
+            onSquareClick={isDone || animating ? undefined : handleSquareClick}
+          />
+          {animating && (
+            <div
+              className="absolute inset-0 rounded-lg bg-red-500/20 pointer-events-none animate-pulse"
+              aria-hidden="true"
+            />
+          )}
+        </div>
       </div>
 
       {/* right: task + feedback */}
