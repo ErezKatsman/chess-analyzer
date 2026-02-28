@@ -6,8 +6,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { TurningPoint } from '@/lib/interfaces/analysis';
 import type { BlunderExplanation } from '@/lib/interfaces/analysis';
 
-const client = new Anthropic();
-
 // only explain blunders and mistakes — inaccuracies are too minor to warrant ai cost
 const EXPLAIN_TYPES = new Set(['blunder', 'mistake']);
 
@@ -39,6 +37,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ explanations: [] });
   }
 
+  // no api key configured — return empty so the ui falls back to one-liners
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ explanations: [] });
+  }
+
   // filter to only blunders/mistakes — skip inaccuracies to keep cost low
   const pointsToExplain = turningPoints.filter((tp) => EXPLAIN_TYPES.has(tp.type));
 
@@ -59,6 +62,9 @@ ${positionDescriptions}
 
 Return ONLY a valid JSON array with this shape (no markdown, no extra text):
 [{"id":"moveNumber-side","explanation":"...","rule":"..."}]`;
+
+  // instantiate here (after the key guard) so the module never throws on import
+  const client = new Anthropic();
 
   try {
     const response = await client.messages.create({
