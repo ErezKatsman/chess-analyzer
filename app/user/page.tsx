@@ -2,11 +2,15 @@ import Link from 'next/link';
 
 import type { IGame } from '@/lib/interfaces/games';
 import { fetchGamesWithArchive } from '@/lib/userUtils';
+import { fetchMonthlyGames, fetchUserArchives } from '@/lib/services/chesscom';
 import { GamesTable } from '@/components/GamesTable';
+import { MonthPicker } from '@/components/MonthPicker';
 
 interface UserPageProps {
   searchParams: {
     userName?: string;
+    year?: string;
+    month?: string;
   };
 }
 
@@ -24,6 +28,12 @@ function normalizeUserName(raw: string | undefined): string {
   } catch {
     return value;
   }
+}
+
+function parseIntParam(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 function CardShell({ children }: { children: React.ReactNode }) {
@@ -60,25 +70,48 @@ export default async function UserPage({ searchParams }: UserPageProps) {
     );
   }
 
+  const requestedYear = parseIntParam(searchParams.year);
+  const requestedMonth = parseIntParam(searchParams.month);
+  const hasExplicitMonth = requestedYear !== null && requestedMonth !== null;
+
   let games: IGame[] = [];
   let archiveYear = 0;
   let archiveMonth = 0;
   let errorMessage: string | null = null;
 
-  try {
-    const result = await fetchGamesWithArchive(userName);
-    games = result.games;
-    archiveYear = result.year;
-    archiveMonth = result.month;
-  } catch (error) {
-    errorMessage = error instanceof Error ? error.message : 'failed to fetch games';
+  // fetch archives and games in parallel; archives power the month picker
+  const [archivesResult, gamesResult] = await Promise.allSettled([
+    fetchUserArchives(userName),
+    hasExplicitMonth
+      ? fetchMonthlyGames({ userName, year: requestedYear, month: requestedMonth })
+      : fetchGamesWithArchive(userName),
+  ]);
+
+  const archives = archivesResult.status === 'fulfilled' ? archivesResult.value : [];
+
+  if (gamesResult.status === 'rejected') {
+    errorMessage =
+      gamesResult.reason instanceof Error
+        ? gamesResult.reason.message
+        : 'failed to fetch games';
+  } else {
+    if (hasExplicitMonth) {
+      games = gamesResult.value as IGame[];
+      archiveYear = requestedYear;
+      archiveMonth = requestedMonth;
+    } else {
+      const result = gamesResult.value as { games: IGame[]; year: number; month: number };
+      games = result.games;
+      archiveYear = result.year;
+      archiveMonth = result.month;
+    }
   }
 
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8 space-y-6">
         <header className="rounded-2xl border bg-card p-6 shadow-sm">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">{userName}</h1>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -89,8 +122,16 @@ export default async function UserPage({ searchParams }: UserPageProps) {
               </p>
             </div>
 
-            <div className="text-sm text-muted-foreground">
-              {errorMessage ? 0 : games.length} games
+            <div className="flex items-center gap-4">
+              <MonthPicker
+                userName={userName}
+                archives={archives}
+                selectedYear={archiveYear}
+                selectedMonth={archiveMonth}
+              />
+              <div className="text-sm text-muted-foreground whitespace-nowrap">
+                {errorMessage ? 0 : games.length} games
+              </div>
             </div>
           </div>
         </header>
@@ -107,7 +148,7 @@ export default async function UserPage({ searchParams }: UserPageProps) {
           <CardShell>
             <div className="text-sm font-semibold">no games found</div>
             <div className="mt-2 text-sm text-muted-foreground">
-              this user may have no games in the latest archive month.
+              this user may have no games in the selected archive month.
             </div>
           </CardShell>
         ) : (
