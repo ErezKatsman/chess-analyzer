@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 
 import { ChessBoard } from '@/components/ChessBoard';
+import { EvalGraph } from '@/components/EvalGraph';
 import { Button } from '@/components/ui/button';
 import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
 
@@ -161,6 +162,21 @@ export function GameReplay({
   const canPrev = clampedIndex > 0;
   const canNext = clampedIndex < maxIndex;
 
+  // set of plies where a blunder occurred — used by EvalGraph to draw red markers
+  const blunderPlies = React.useMemo(() => {
+    if (analysis.status !== 'done') return new Set<number>();
+    const set = new Set<number>();
+    for (const tp of analysis.result.turningPoints) {
+      if (tp.type !== 'blunder') continue;
+      const ply =
+        tp.side === 'white'
+          ? (tp.moveNumber - 1) * 2 + 1
+          : (tp.moveNumber - 1) * 2 + 2;
+      set.add(ply);
+    }
+    return set;
+  }, [analysis]);
+
   // fast lookup: `${moveNumber}-${side}` → TurningPoint
   const tpMap = React.useMemo(() => {
     const map = new Map<string, TurningPoint>();
@@ -259,6 +275,16 @@ export function GameReplay({
         <div className="mt-4">
           <ChessBoard fen={fen} orientation={isWhite ? 'white' : 'black'} />
         </div>
+
+        {/* eval graph — shown after analysis completes */}
+        {analysis.status === 'done' ? (
+          <EvalGraph
+            evals={analysis.result.evals}
+            currentPly={clampedIndex}
+            onSeek={setIndex}
+            blunderPlies={blunderPlies}
+          />
+        ) : null}
 
         <div className="mt-4 grid gap-3">
           <div className="flex items-center gap-2">
