@@ -11,9 +11,10 @@ const INACCURACY_CP = 50;
 // treat a forced mate as a large cp value for loss comparison
 const MATE_CP = 2000;
 
-// if the mover's position is already beyond this (from their perspective),
-// the game is considered decided — suppress inaccuracy/mistake noise
-const DECIDED_POSITION_CP = 500;
+// suppress mistakes/inaccuracies when already losing/winning by this much
+const DECIDED_MINOR_CP = 500;
+// suppress blunder cascades: once losing by this much, further 200cp drops are noise
+const DECIDED_BLUNDER_CP = 350;
 
 // convert a position eval to a numeric cp value (handles mate)
 function toCp(e: PositionEval): number {
@@ -67,14 +68,12 @@ function buildReason(
   }
 }
 
-// returns true when the position is already heavily decided from the mover's perspective.
-// in decided positions, small inaccuracies and mistakes are noise — the game is already over.
-function isDecided(evalBefore: PositionEval, side: 'white' | 'black'): boolean {
+// returns true when the position is already decided beyond the given threshold.
+// used to suppress noise after the game outcome is no longer in doubt.
+function isDecided(evalBefore: PositionEval, side: 'white' | 'black', threshold: number = DECIDED_MINOR_CP): boolean {
   const sign = side === 'white' ? 1 : -1;
   const moverCp = sign * toCp(evalBefore);
-  // moverCp > DECIDED_POSITION_CP means mover is already winning by a lot (no need to flag noise)
-  // moverCp < -DECIDED_POSITION_CP means mover is already losing heavily (blunders only matter)
-  return Math.abs(moverCp) > DECIDED_POSITION_CP;
+  return Math.abs(moverCp) > threshold;
 }
 
 // detect if a move missed a forced mate that was available before
@@ -115,11 +114,13 @@ export function computeTurningPoints(
 
     const side: 'white' | 'black' = move.color === 'w' ? 'white' : 'black';
     const loss = cpLossForMover(evalBefore, evalAfter, side);
+    // decided uses the default DECIDED_MINOR_CP threshold (500cp) for mistakes/inaccuracies
     const decided = isDecided(evalBefore, side);
 
     let type: TurningPoint['type'] | null = null;
 
-    if (loss >= BLUNDER_CP) {
+    if (loss >= BLUNDER_CP && !isDecided(evalBefore, side, DECIDED_BLUNDER_CP)) {
+      // use lower threshold for blunders to prevent cascade-flagging after a big loss
       type = 'blunder';
     } else if (!decided && loss >= MISTAKE_CP) {
       // skip mistakes in already-decided positions — they are noise
