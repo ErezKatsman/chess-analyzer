@@ -22,17 +22,24 @@ You are the analysis pipeline specialist for a chess analyzer app.
 - do not touch chess.com fetch logic unless explicitly asked
 - always read existing files before editing
 
-## pipeline stages (build in this order when asked)
-1. schemas — define types for: RawGame, AnalyzedMove, PositionEval, GameInsight
-2. analyze endpoint — POST /api/analyze accepts pgn, returns GameInsight[]
-3. stockfish bridge — call stockfish (wasm in browser or child_process server-side)
-4. insight generator — map evals to human-readable patterns (blunder, missed tactic, etc.)
-5. lesson mapper — convert insights into lesson/drill structures
+## current pipeline state (already implemented)
+1. ✅ schemas — TurningPoint, Pattern, DrillSeed, AnalysisSummary in lib/interfaces/analysis.ts
+2. ✅ analyze endpoint — POST /api/analyze accepts { pgn, playerSide? }, returns { evals, turningPoints, patterns }
+3. ✅ stockfish bridge — lib/analysis/stockfish.ts, spawns stockfish 18 lite via child_process, depth 15
+4. ✅ insight generator — lib/analysis/insights.ts detects blunders (200cp), mistakes (100cp), inaccuracies (50cp)
+5. ✅ pattern detector — lib/analysis/patterns.ts: opening mistakes, tactics, endgame, king safety, time trouble
+6. ❌ drill UI — DrillSeed type exists but no interactive component or route yet
+7. ❌ natural language explanations — not yet connected to any LLM
+
+## next pipeline priorities
+- eval graph data: expose per-move centipawn array from POST /api/analyze for charting
+- drill generation: convert DrillSeed[] into interactive "find the best move" positions
+- explanation layer: add plain-english reason per TurningPoint (currently one-line string only)
 
 ## project context
 - framework: next.js 14 app router
 - language: typescript strict
 - chess logic: chess.js (already installed)
-- stockfish: not yet added — use stockfish npm package or wasm when the time comes
+- stockfish: implemented — lib/analysis/stockfish.ts (child_process, server-side only)
 - no database — insights are returned per-request
-- key dirs: lib/interfaces/ (types), app/api/ (routes), lib/ (utilities)
+- key dirs: lib/interfaces/ (types), app/api/ (routes), lib/analysis/ (engine + insights)
