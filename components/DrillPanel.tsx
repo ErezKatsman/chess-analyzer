@@ -44,18 +44,19 @@ export function DrillPanel({
   const [status, setStatus] = React.useState<DrillStatus>('idle');
   const [attempts, setAttempts] = React.useState(0);
   const [hint, setHint] = React.useState('');
-  // displayFen changes when the player makes the correct move or we reveal the answer
+  // displayFen changes when the player makes a move, reveals the answer, or replays the blunder
   const [displayFen, setDisplayFen] = React.useState(fen);
-  // true while the wrong-move flash animation is running — disables board interaction
+  // true while the wrong-move flash animation is running
   const [animating, setAnimating] = React.useState(false);
-  // true while the blunder intro replay is showing before the drill starts
-  const [introPlaying, setIntroPlaying] = React.useState(!!blunderMove);
+  // true while the "show my blunder" replay is flashing on the board
+  const [blunderFlashing, setBlunderFlashing] = React.useState(false);
 
   const chess = React.useMemo(() => new Chess(fen), [fen]);
   const playerColor = side === 'white' ? 'w' : 'b';
   const isDone = status === 'correct' || status === 'revealed';
+  const boardBusy = animating || blunderFlashing;
 
-  // compute the san of the blunder move for the intro overlay label
+  // compute the san of the blunder move for the button label and overlay
   const blunderSan = React.useMemo(() => {
     if (!blunderMove) return null;
     try {
@@ -71,41 +72,28 @@ export function DrillPanel({
     }
   }, [fen, blunderMove]);
 
-  // on mount: play the blunder move for 1.2s so the user sees what went wrong,
-  // then snap back to the starting position and let them find the best move
-  React.useEffect(() => {
-    if (!blunderMove) return;
-
-    const postBlunderFen = (() => {
-      try {
-        const tmp = new Chess(fen);
-        tmp.move({ from: blunderMove.slice(0, 2), to: blunderMove.slice(2, 4), promotion: blunderMove[4] ?? 'q' });
-        return tmp.fen();
-      } catch {
-        return null;
-      }
-    })();
-
-    if (!postBlunderFen) {
-      setIntroPlaying(false);
-      return;
-    }
-
-    setDisplayFen(postBlunderFen);
-
-    const id = setTimeout(() => {
-      setDisplayFen(fen);
-      setIntroPlaying(false);
-    }, 1200);
-
-    return () => clearTimeout(id);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   // apply a uci move on top of the original fen and return the resulting fen
   const applyMove = (uci: string): string => {
     const tmp = new Chess(fen);
     tmp.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? 'q' });
     return tmp.fen();
+  };
+
+  // show the blunder move on the board for 1.2s, then snap back
+  const replayBlunder = () => {
+    if (!blunderMove || boardBusy) return;
+    try {
+      const postBlunderFen = applyMove(blunderMove);
+      setBlunderFlashing(true);
+      setDisplayFen(postBlunderFen);
+      setTimeout(() => {
+        // snap back to the position the drill is on (fen if idle, else whatever is showing)
+        setDisplayFen(isDone ? applyMove(status === 'revealed' ? bestMove : blunderMove) : fen);
+        setBlunderFlashing(false);
+      }, 1200);
+    } catch {
+      // invalid move — ignore
+    }
   };
 
   const evaluateAttempt = (uci: string) => {
@@ -149,7 +137,7 @@ export function DrillPanel({
   };
 
   const handleSquareClick = (square: string) => {
-    if (isDone || animating) return;
+    if (isDone || boardBusy) return;
 
     const piece = chess.get(square as ChessSquare);
 
@@ -217,11 +205,11 @@ export function DrillPanel({
             orientation={side}
             selectedSquare={selected}
             bestMove={status === 'revealed' ? bestMove : null}
-            onSquareClick={isDone || animating || introPlaying ? undefined : handleSquareClick}
+            onSquareClick={isDone || boardBusy ? undefined : handleSquareClick}
           />
 
-          {/* intro overlay: shows the blunder move with a label */}
-          {introPlaying && (
+          {/* blunder replay overlay — shown when user clicks "show my blunder" */}
+          {blunderFlashing && (
             <div
               className="absolute inset-0 rounded-lg bg-red-500/25 pointer-events-none flex items-end justify-center pb-3"
               aria-hidden="true"
@@ -232,8 +220,8 @@ export function DrillPanel({
             </div>
           )}
 
-          {/* red flash overlay for wrong attempts */}
-          {animating && !introPlaying && (
+          {/* wrong-attempt flash overlay */}
+          {animating && (
             <div
               className="absolute inset-0 rounded-lg bg-red-500/20 pointer-events-none animate-pulse"
               aria-hidden="true"
@@ -252,22 +240,9 @@ export function DrillPanel({
 
         <div className="rounded-lg bg-muted p-3">
           <p className="text-xs font-semibold text-muted-foreground mb-1">task</p>
-          {introPlaying ? (
-            <>
-              <p className="text-sm font-medium text-red-600 dark:text-red-400">
-                ✗ you played {blunderSan ?? 'this move'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1 animate-pulse">
-                rewinding… find the best move instead.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-medium">Find the best move for {side}.</p>
-              {status === 'idle' && (
-                <p className="text-xs text-muted-foreground mt-1">click a piece, then a destination square.</p>
-              )}
-            </>
+          <p className="text-sm font-medium">Find the best move for {side}.</p>
+          {status === 'idle' && (
+            <p className="text-xs text-muted-foreground mt-1">click a piece, then a destination square.</p>
           )}
         </div>
 
@@ -294,6 +269,18 @@ export function DrillPanel({
         )}
 
         <div className="flex gap-2 flex-wrap mt-auto pt-2">
+          {/* show my blunder button — available any time blunderMove is known */}
+          {blunderMove && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={boardBusy}
+              onClick={replayBlunder}
+            >
+              show my blunder{blunderSan ? ` (${blunderSan})` : ''}
+            </Button>
+          )}
+
           {!isDone && (
             <>
               <Button variant="outline" size="sm" onClick={reveal}>give up</Button>
