@@ -8,6 +8,7 @@ description: Summarize a user's chess games over a time period (e.g. last week, 
 Aggregate insights across multiple games into a concise progress report.
 
 ### input
+
 - time range: e.g. "last 7 days", "january 2026", "last 20 games"
 - source: chess.com username (already available from app state)
 - optionally: pre-analyzed `GameInsight[]` if already fetched
@@ -15,9 +16,9 @@ Aggregate insights across multiple games into a concise progress report.
 ### steps
 
 1. **fetch the games**
-   - use codebase-explorer to confirm where the chess.com fetch logic lives
-   - retrieve all games in the requested time range
-   - if more than 30 games, sample the most recent 30 to stay cost-aware
+   - only use codebase-explorer if the fetch entrypoint path is unknown
+   - otherwise call the existing fetch flow directly
+   - cap work per slice: analyze at most 5 games per slice, then stop with a progress summary
 
 2. **analyze each game**
    - invoke analyze-game logic per game (batch, not interactive)
@@ -39,6 +40,7 @@ Aggregate insights across multiple games into a concise progress report.
    - one actionable drill recommendation based on the pattern
 
 ### output format
+
 ```
 Period: [date range] — [N] games analyzed
 Record: [W] wins / [D] draws / [L] losses

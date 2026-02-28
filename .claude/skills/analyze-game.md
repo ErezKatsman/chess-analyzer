@@ -13,9 +13,9 @@ Analyze a single chess game and return structured insights.
    - if a pgn string is provided, use it directly
    - if a game ID or url is provided, locate the fetch logic in lib/ and retrieve the pgn first
 
-2. **check pipeline readiness**
-   - use codebase-explorer to confirm whether POST /api/analyze exists
-   - if it does not exist, delegate to analysis-pipeline agent to create it before continuing
+2. **check pipeline readiness (only if unsure)**
+   - only use codebase-explorer if the /api/analyze route location is unknown
+   - otherwise proceed directly to calling POST /api/analyze
 
 3. **run the analysis**
    - call POST /api/analyze with the pgn
@@ -31,6 +31,7 @@ Analyze a single chess game and return structured insights.
    - if yes, invoke the generate-lesson skill
 
 ### output format
+
 ```
 Game: [white] vs [black] — [date]
 Result: [result]

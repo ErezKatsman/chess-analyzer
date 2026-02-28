@@ -17,6 +17,10 @@ type Props = {
   showCoords?: boolean;
   // uci move string to highlight as best-move arrow (e.g. "e2e4")
   bestMove?: string | null;
+  // interactive mode: called when user clicks a square
+  onSquareClick?: (square: string) => void;
+  // square to highlight as selected (e.g. "e2")
+  selectedSquare?: string | null;
 };
 
 const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
@@ -117,11 +121,20 @@ function parseUci(uci: string): { from: string; to: string } | null {
   return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
 }
 
-export function ChessBoard({ fen, orientation = 'white', className, showCoords = true, bestMove = null }: Props) {
+export function ChessBoard({
+  fen,
+  orientation = 'white',
+  className,
+  showCoords = true,
+  bestMove = null,
+  onSquareClick,
+  selectedSquare = null,
+}: Props) {
   const squares = React.useMemo(() => getSquares(orientation), [orientation]);
   const pieces = React.useMemo(() => parseFenPieces(fen), [fen]);
 
   const arrow = bestMove ? parseUci(bestMove) : null;
+  const isInteractive = !!onSquareClick;
 
   return (
     <div className={className}>
@@ -141,12 +154,17 @@ export function ChessBoard({ fen, orientation = 'white', className, showCoords =
               ((orientation === 'white' && square[0] === 'a') ||
                 (orientation === 'black' && square[0] === 'h'));
 
+            const isSelected = selectedSquare === square;
+
             return (
               <div
                 key={square}
+                onClick={isInteractive ? () => onSquareClick(square) : undefined}
                 className={[
                   'relative flex items-center justify-center aspect-square overflow-hidden',
                   light ? 'bg-[#f0d9b5]' : 'bg-[#b58863]',
+                  isSelected ? 'ring-4 ring-inset ring-blue-400' : '',
+                  isInteractive ? 'cursor-pointer' : '',
                 ].join(' ')}
               >
                 {showRank ? (

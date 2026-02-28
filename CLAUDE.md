@@ -45,6 +45,10 @@
 
 ## workflow requirement
 
-- first: short plan (5-10 bullets).
-- then: implement step 1 only.
-- then: stop and wait for confirmation.
+- first: short plan (3-7 bullets), grouped into slices.
+- then: implement one coherent slice per message (max 3 files changed or ~150 LOC total).
+- read only what's needed: max 2-3 file reads before the first edit.
+- verification once per slice (dev/lint/typecheck as relevant), not after every micro-change.
+- stop only after the slice is complete or when a decision is required.
+- do not call codebase-explorer unless a file path or symbol is unknown.
+- avoid agent bouncing: one agent owns a slice end-to-end.
