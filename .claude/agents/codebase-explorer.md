@@ -22,9 +22,26 @@ You are a read-only codebase explorer for a Next.js 14 chess analyzer app.
 
 ## project context
 - framework: next.js 14 app router
+- auth: clerk (middleware.ts guards /user, /game, /drills)
 - language: typescript strict mode
-- styling: tailwind
+- styling: tailwind css
 - chess logic: chess.js
-- key dirs: app/ (routes), components/ (ui), lib/ (utilities + types)
-- chess.com fetch is already implemented in lib/
-- no database, no auth
+- database: mongodb via mongoose (lib/db/schemas.ts)
+- ai: claude haiku via @anthropic-ai/sdk (app/api/explain/route.ts)
+- key dirs: app/ (routes), components/ (ui), lib/ (utilities + types + db)
+
+## important: components have sub-module folders
+- components/game-replay/ — types, utils, MovesList, AnalysisPanel (extracted from GameReplay.tsx)
+- components/drill-panel/ — types, useDrillState (extracted from DrillPanel.tsx)
+- components/chess-board/ — utils (extracted from ChessBoard.tsx)
+- lib/utils/game.ts — helpers extracted from GamesTable.tsx
+
+## data flow summary
+1. user enters chess.com username → Hero → /user page (server component)
+2. /user fetches archives + games from chess.com API via lib/services/chesscom.ts
+3. games cached in mongodb (CachedGames model, TTL 1h)
+4. user clicks game → /game page (server component) loads cached analysis from GameAnalysis model
+5. GameReplay client component renders; calls POST /api/analyze if not cached
+6. /api/analyze: stockfish → turning points → patterns → saves to GameAnalysis
+7. GameReplay calls POST /api/explain for blunder explanations (cached in GameAnalysis.explanations)
+8. quota tracked in UserQuota model; PaywallModal shown on 402

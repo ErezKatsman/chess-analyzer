@@ -9,130 +9,20 @@ import { DrillPanel } from '@/components/DrillPanel';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Button } from '@/components/ui/button';
 import { FREE_LIMIT } from '@/lib/hooks/useAnalysisQuota';
-
-type QuotaState = { used: number; limit: number; remaining: number } | null;
-import type { TurningPoint, Pattern, BlunderExplanation } from '@/lib/interfaces/analysis';
-
-type GameOption = { uuid: string; label: string };
-
-type PlyEval = {
-  ply: number;
-  fen: string;
-  cp: number | null;
-  mate: number | null;
-  bestMove: string | null;
-};
-
-type AnalysisResult = {
-  evals: PlyEval[];
-  turningPoints: TurningPoint[];
-  patterns: Pattern[];
-  explanations?: BlunderExplanation[];
-};
-
-type AnalysisState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'done'; result: AnalysisResult };
-
-type Props = {
-  userName: string;
-  uuid: string;
-
-  // pre-loaded from mongodb server-side — skips the "analyze" step on reopen
-  initialAnalysis?: AnalysisResult | null;
-
-  opponentName: string;
-  resultText: string;
-
-  gameUrl: string;
-  ecoUrl?: string;
-  opening?: string;
-
-  endTime: number;
-  timeClass: string;
-  timeControl: string;
-
-  fenArr: string[];
-  sanMoves: string[];
-  gameOptions: GameOption[];
-
-  isWhite: boolean;
-  archiveYear?: number;
-  archiveMonth?: number;
-
-  pgn: string;
-};
-
-function formatEndTime(endTimeSeconds: number): string {
-  if (!Number.isFinite(endTimeSeconds) || endTimeSeconds <= 0) return '';
-  const date = new Date(endTimeSeconds * 1000);
-  return date.toLocaleString();
-}
-
-function groupMoves(sanMoves: string[]) {
-  const rows: Array<{ moveNumber: number; white?: string; black?: string }> = [];
-  for (let i = 0; i < sanMoves.length; i += 2) {
-    rows.push({
-      moveNumber: Math.floor(i / 2) + 1,
-      white: sanMoves[i],
-      black: sanMoves[i + 1],
-    });
-  }
-  return rows;
-}
-
-// pill-badge style — colored bg + text so badges stand out in the move list
-function tpBadgeClass(type: TurningPoint['type']): string {
-  const base = 'inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none';
-  switch (type) {
-    case 'blunder':
-      return `${base} bg-red-500/15 text-red-500`;
-    case 'mistake':
-      return `${base} bg-orange-400/15 text-orange-400`;
-    case 'inaccuracy':
-      return `${base} bg-yellow-500/15 text-yellow-600 dark:text-yellow-500`;
-    case 'missed_win':
-      return `${base} bg-purple-400/15 text-purple-400`;
-    default:
-      return `${base} bg-muted text-muted-foreground`;
-  }
-}
-
-function tpSymbol(type: TurningPoint['type']): string {
-  switch (type) {
-    case 'blunder':
-      return '??';
-    case 'mistake':
-      return '?';
-    case 'inaccuracy':
-      return '?!';
-    case 'missed_win':
-      return '⁉';
-    default:
-      return '';
-  }
-}
-
-function patternTagClass(tag: Pattern['tag']): string {
-  switch (tag) {
-    case 'tactics':
-      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-    case 'opening':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-    case 'endgame':
-      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
-    case 'king-safety':
-      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
-    case 'time-trouble':
-      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
-    case 'strategy':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-    default:
-      return 'bg-muted text-muted-foreground';
-  }
-}
+import type {
+  AnalysisState,
+  AnalysisResult,
+  PlyEval,
+  QuotaState,
+  GameOption,
+  GameReplayProps as Props,
+  TurningPoint,
+  Pattern,
+  BlunderExplanation,
+} from '@/components/game-replay/types';
+import { formatEndTime, groupMoves } from '@/components/game-replay/utils';
+import { MovesList } from '@/components/game-replay/MovesList';
+import { AnalysisPanel } from '@/components/game-replay/AnalysisPanel';
 
 export function GameReplay({
   userName,
@@ -653,221 +543,26 @@ export function GameReplay({
 
         {/* ── moves tab ── */}
         {activeTab === 'moves' ? (
-        <div className="mt-3 max-h-[calc(100vh-300px)] overflow-auto rounded-xl border bg-background">
-          <div className="grid grid-cols-[64px,1fr,1fr] text-xs font-semibold text-muted-foreground px-3 py-2 border-b">
-            <div>#</div>
-            <div>white</div>
-            <div>black</div>
-          </div>
-
-          <div className="divide-y">
-            {moveRows.map((row) => {
-              const whitePly = (row.moveNumber - 1) * 2 + 1;
-              const blackPly = (row.moveNumber - 1) * 2 + 2;
-
-              const isWhiteActive = clampedIndex === whitePly;
-              const isBlackActive = clampedIndex === blackPly;
-
-              const whiteTP = tpMap.get(`${row.moveNumber}-white`);
-              const blackTP = tpMap.get(`${row.moveNumber}-black`);
-
-              // subtle background tint for rows containing a turning point
-              const worstType = [whiteTP?.type, blackTP?.type].includes('blunder')
-                ? 'blunder'
-                : [whiteTP?.type, blackTP?.type].includes('mistake')
-                  ? 'mistake'
-                  : [whiteTP?.type, blackTP?.type].includes('inaccuracy')
-                    ? 'inaccuracy'
-                    : null;
-              const rowTint =
-                worstType === 'blunder'
-                  ? 'bg-red-500/[0.04]'
-                  : worstType === 'mistake'
-                    ? 'bg-orange-500/[0.04]'
-                    : worstType === 'inaccuracy'
-                      ? 'bg-yellow-500/[0.03]'
-                      : '';
-
-              return (
-                <div
-                  key={row.moveNumber}
-                  className={['grid grid-cols-[64px,1fr,1fr] items-center px-3 py-2', rowTint].join(' ')}
-                >
-                  <div className="text-xs font-semibold text-muted-foreground">
-                    {row.moveNumber}.
-                  </div>
-
-                  <button
-                    type="button"
-                    title={whiteTP?.oneLineReason}
-                    disabled={!row.white}
-                    onClick={() => setIndex(Math.min(maxIndex, whitePly))}
-                    className={[
-                      'text-left rounded-md px-2 py-1 text-sm flex items-center gap-1',
-                      row.white ? 'hover:bg-muted' : 'opacity-40 cursor-default',
-                      isWhiteActive ? 'bg-muted font-semibold' : '',
-                    ].join(' ')}
-                  >
-                    <span>{row.white ?? '—'}</span>
-                    {whiteTP ? (
-                      <span className={tpBadgeClass(whiteTP.type)}>{tpSymbol(whiteTP.type)}</span>
-                    ) : null}
-                  </button>
-
-                  <button
-                    type="button"
-                    title={blackTP?.oneLineReason}
-                    disabled={!row.black}
-                    onClick={() => setIndex(Math.min(maxIndex, blackPly))}
-                    className={[
-                      'text-left rounded-md px-2 py-1 text-sm flex items-center gap-1',
-                      row.black ? 'hover:bg-muted' : 'opacity-40 cursor-default',
-                      isBlackActive ? 'bg-muted font-semibold' : '',
-                    ].join(' ')}
-                  >
-                    <span>{row.black ?? '—'}</span>
-                    {blackTP ? (
-                      <span className={tpBadgeClass(blackTP.type)}>{tpSymbol(blackTP.type)}</span>
-                    ) : null}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+          <MovesList
+            moveRows={moveRows}
+            clampedIndex={clampedIndex}
+            maxIndex={maxIndex}
+            tpMap={tpMap}
+            onSeek={setIndex}
+          />
         ) : null /* end moves tab */}
 
         {/* ── analysis tab ── */}
         {activeTab === 'analysis' ? (
-          <div className="mt-3 max-h-[calc(100vh-300px)] overflow-y-auto grid gap-3">
-            {analysis.status === 'done' ? (
-            <>
-            {/* stat pills — colored pill per category for quick scanning */}
-            <div className="flex flex-wrap items-center gap-2">
-              {(() => {
-                const blunders = analysis.result.turningPoints.filter((t) => t.type === 'blunder').length;
-                const mistakes = analysis.result.turningPoints.filter((t) => t.type === 'mistake').length;
-                const inaccuracies = analysis.result.turningPoints.filter((t) => t.type === 'inaccuracy').length;
-                return (
-                  <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-500">
-                      <span className="text-sm font-bold">{blunders}</span> blunder{blunders !== 1 ? 's' : ''}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-400/10 px-2.5 py-1 text-xs font-semibold text-orange-400">
-                      <span className="text-sm font-bold">{mistakes}</span> mistake{mistakes !== 1 ? 's' : ''}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2.5 py-1 text-xs font-semibold text-yellow-600 dark:text-yellow-500">
-                      <span className="text-sm font-bold">{inaccuracies}</span> inaccurac{inaccuracies !== 1 ? 'ies' : 'y'}
-                    </span>
-                    {drills.length > 0 && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="ml-auto"
-                        onClick={() => setDrillIndex(0)}
-                      >
-                        practice {drills.length} blunder{drills.length > 1 ? 's' : ''}
-                      </Button>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-
-            {/* blunder + mistake list with ai explanations */}
-            {analysis.result.turningPoints.filter(
-              (tp) => tp.type === 'blunder' || tp.type === 'mistake',
-            ).length > 0 ? (
-              <div className="grid gap-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                  <span>key errors</span>
-                  {explanationsLoading ? (
-                    <span className="animate-pulse text-muted-foreground/60">
-                      — ai coach thinking…
-                    </span>
-                  ) : null}
-                </div>
-                {analysis.result.turningPoints
-                  .filter((tp) => tp.type === 'blunder' || tp.type === 'mistake')
-                  .map((tp) => {
-                    const expId = `${tp.moveNumber}-${tp.side}`;
-                    const exp = explanations.get(expId);
-                    return (
-                      <div
-                        key={expId}
-                        className={[
-                          'rounded-lg border bg-background p-3 text-sm cursor-pointer hover:bg-muted/30 transition-colors',
-                          // colored left border for instant severity scan
-                          'border-l-2',
-                          tp.type === 'blunder' ? 'border-l-red-500' : 'border-l-orange-400',
-                        ].join(' ')}
-                        onClick={() => {
-                          // jump board to the position before this error
-                          const ply =
-                            tp.side === 'white'
-                              ? (tp.moveNumber - 1) * 2
-                              : (tp.moveNumber - 1) * 2 + 1;
-                          setIndex(Math.min(maxIndex, ply));
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className={tpBadgeClass(tp.type)}>
-                            {tpSymbol(tp.type)} move {tp.moveNumber} ({tp.side})
-                          </span>
-                        </div>
-                        {exp ? (
-                          <>
-                            <p className="mt-1.5 text-sm text-foreground leading-snug">
-                              {exp.explanation}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground italic">
-                              💡 {exp.rule}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {explanationsLoading ? (
-                              <span className="animate-pulse">generating explanation…</span>
-                            ) : (
-                              tp.oneLineReason
-                            )}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            ) : null}
-
-            {analysis.result.patterns.length > 0 ? (
-              <div className="grid gap-2">
-                <div className="text-xs font-semibold text-muted-foreground">patterns detected</div>
-                {analysis.result.patterns.map((p) => (
-                  <div key={p.tag} className="rounded-lg border bg-background p-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={[
-                          'rounded-full px-2 py-0.5 text-xs font-semibold',
-                          patternTagClass(p.tag),
-                        ].join(' ')}
-                      >
-                        {p.tag}
-                      </span>
-                      <span className="font-medium">{p.title}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{p.coachingHint}</p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            </> /* end analysis.status === 'done' fragment */
-            ) : (
-              /* analysis not yet run */
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                run analysis to see insights
-              </div>
-            )}
-          </div>
+          <AnalysisPanel
+            analysisState={analysis}
+            drillCount={drills.length}
+            explanations={explanations}
+            explanationsLoading={explanationsLoading}
+            maxIndex={maxIndex}
+            onSeek={setIndex}
+            onStartDrills={() => setDrillIndex(0)}
+          />
         ) : null /* end analysis tab */}
       </div>
     </div>
