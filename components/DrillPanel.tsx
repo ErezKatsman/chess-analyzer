@@ -22,6 +22,7 @@ export type DrillProps = {
   evalAfter: number | null;
   drillIndex: number;       // 0-based, for "drill 1 of N" display
   totalDrills: number;
+  gameUuid?: string;        // used to save drill session to mongodb
   onNext?: () => void;
   onExit: () => void;
 };
@@ -37,6 +38,7 @@ export function DrillPanel({
   evalAfter,
   drillIndex,
   totalDrills,
+  gameUuid,
   onNext,
   onExit,
 }: DrillProps) {
@@ -55,6 +57,27 @@ export function DrillPanel({
   const playerColor = side === 'white' ? 'w' : 'b';
   const isDone = status === 'correct' || status === 'revealed';
   const boardBusy = animating || blunderFlashing;
+
+  // save drill result to mongodb when drill reaches a terminal state
+  React.useEffect(() => {
+    if (!isDone || !gameUuid) return;
+    void fetch('/api/drills/attempt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gameUuid,
+        moveNumber,
+        side,
+        blunderMove: blunderMove ?? '',
+        correctMove: bestMove,
+        solved: status === 'correct',
+        attempts,
+      }),
+    }).catch(() => {
+      // non-fatal — drill still works without persistence
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDone]);
 
   // compute the san of the blunder move for the button label and overlay
   const blunderSan = React.useMemo(() => {
