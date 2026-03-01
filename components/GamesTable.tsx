@@ -15,6 +15,7 @@ type GamesTableProps = {
   games: IGame[];
   archiveYear: number;
   archiveMonth: number; // 1-12
+  analyzedUuids?: Set<string>;
 };
 
 function formatEndTime(endTime: number): string {
@@ -63,7 +64,7 @@ function safeOpening(opening: IGame['gameDetails']['opening']): string {
   return value.length ? value : 'unknown opening';
 }
 
-export function GamesTable({ userName, games, archiveYear, archiveMonth }: GamesTableProps) {
+export function GamesTable({ userName, games, archiveYear, archiveMonth, analyzedUuids }: GamesTableProps) {
   const sortedGames = [...games].sort((a, b) => b.endTime - a.endTime);
 
   return (
@@ -109,6 +110,7 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth }: Games
 
               const opening = safeOpening(game.gameDetails.opening);
               const analyzeHref = buildAnalyzeHref(userName, game, archiveYear, archiveMonth);
+              const isAnalyzed = analyzedUuids?.has(game.uuid) ?? false;
 
               return (
                 <TableRow
@@ -194,13 +196,25 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth }: Games
                   </TableCell>
 
                   <TableCell className="text-right">
-                    <Link
-                      href={analyzeHref}
-                      className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-muted/50 transition-colors"
-                      aria-label={`analyze game vs ${opponentName}`}
-                    >
-                      analyze
-                    </Link>
+                    <div className="flex flex-col items-end gap-1">
+                      {isAnalyzed && (
+                        <span className="text-[10px] font-semibold text-emerald-500">
+                          ✓ analyzed
+                        </span>
+                      )}
+                      <Link
+                        href={analyzeHref}
+                        className={[
+                          'inline-flex items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors',
+                          isAnalyzed
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400'
+                            : 'hover:bg-muted/50',
+                        ].join(' ')}
+                        aria-label={`${isAnalyzed ? 'view analysis' : 'analyze'} game vs ${opponentName}`}
+                      >
+                        {isAnalyzed ? 'view analysis' : 'analyze'}
+                      </Link>
+                    </div>
                   </TableCell>
                 </TableRow>
               );

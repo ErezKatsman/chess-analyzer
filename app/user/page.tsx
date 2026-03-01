@@ -1,8 +1,11 @@
 import Link from 'next/link';
+import { auth } from '@clerk/nextjs/server';
 
 import type { IGame } from '@/lib/interfaces/games';
 import { fetchUserArchives } from '@/lib/services/chesscom';
 import { fetchMonthlyGamesCached, fetchLatestMonthlyGamesCached } from '@/lib/db/cachedChesscom';
+import { connectDB } from '@/lib/db/mongo';
+import { GameAnalysis } from '@/lib/db/schemas';
 import { GamesTable } from '@/components/GamesTable';
 import { MonthPicker } from '@/components/MonthPicker';
 import { StatsBar } from '@/components/StatsBar';
@@ -55,6 +58,7 @@ function CardShell({ children }: { children: React.ReactNode }) {
 
 export default async function UserPage({ searchParams }: UserPageProps) {
   const userName = normalizeUserName(searchParams.userName);
+  const { userId } = await auth();
 
   if (!userName) {
     return (
@@ -105,6 +109,21 @@ export default async function UserPage({ searchParams }: UserPageProps) {
       games = result.games;
       archiveYear = result.year;
       archiveMonth = result.month;
+    }
+  }
+
+  // fetch which game UUIDs this user has already analyzed (empty set when signed out)
+  let analyzedUuids = new Set<string>();
+  if (userId && games.length > 0) {
+    try {
+      await connectDB();
+      const analyzed = await GameAnalysis.find(
+        { clerkUserId: userId, gameUuid: { $in: games.map((g) => g.uuid) } },
+        { gameUuid: 1 },
+      ).lean();
+      analyzedUuids = new Set(analyzed.map((a) => a.gameUuid));
+    } catch {
+      // non-fatal — table still renders without badges
     }
   }
 
@@ -160,6 +179,7 @@ export default async function UserPage({ searchParams }: UserPageProps) {
               games={games}
               archiveYear={archiveYear}
               archiveMonth={archiveMonth}
+              analyzedUuids={analyzedUuids}
             />
           </>
         )}
