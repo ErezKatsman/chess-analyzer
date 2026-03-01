@@ -83,6 +83,18 @@ export function Hero() {
               </p>
             </div>
 
+            {/* feature chips — quick value-prop scan */}
+            <div className="flex flex-wrap gap-2">
+              {['engine analysis', 'AI explanations', 'practice drills'].map((f) => (
+                <span
+                  key={f}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-slate-400"
+                >
+                  <span className="text-emerald-400">✓</span> {f}
+                </span>
+              ))}
+            </div>
+
             <div className="flex flex-col gap-3">
               {error && (
                 <p className="text-sm font-medium text-red-400">{error}</p>

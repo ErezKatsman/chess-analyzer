@@ -83,18 +83,20 @@ function groupMoves(sanMoves: string[]) {
   return rows;
 }
 
+// pill-badge style — colored bg + text so badges stand out in the move list
 function tpBadgeClass(type: TurningPoint['type']): string {
+  const base = 'inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none';
   switch (type) {
     case 'blunder':
-      return 'text-red-500 font-bold text-xs';
+      return `${base} bg-red-500/15 text-red-500`;
     case 'mistake':
-      return 'text-orange-400 font-semibold text-xs';
+      return `${base} bg-orange-400/15 text-orange-400`;
     case 'inaccuracy':
-      return 'text-yellow-500 text-xs';
+      return `${base} bg-yellow-500/15 text-yellow-600 dark:text-yellow-500`;
     case 'missed_win':
-      return 'text-purple-400 font-semibold text-xs';
+      return `${base} bg-purple-400/15 text-purple-400`;
     default:
-      return 'text-muted-foreground text-xs';
+      return `${base} bg-muted text-muted-foreground`;
   }
 }
 
@@ -637,10 +639,27 @@ export function GameReplay({
               const whiteTP = tpMap.get(`${row.moveNumber}-white`);
               const blackTP = tpMap.get(`${row.moveNumber}-black`);
 
+              // subtle background tint for rows containing a turning point
+              const worstType = [whiteTP?.type, blackTP?.type].includes('blunder')
+                ? 'blunder'
+                : [whiteTP?.type, blackTP?.type].includes('mistake')
+                  ? 'mistake'
+                  : [whiteTP?.type, blackTP?.type].includes('inaccuracy')
+                    ? 'inaccuracy'
+                    : null;
+              const rowTint =
+                worstType === 'blunder'
+                  ? 'bg-red-500/[0.04]'
+                  : worstType === 'mistake'
+                    ? 'bg-orange-500/[0.04]'
+                    : worstType === 'inaccuracy'
+                      ? 'bg-yellow-500/[0.03]'
+                      : '';
+
               return (
                 <div
                   key={row.moveNumber}
-                  className="grid grid-cols-[64px,1fr,1fr] items-center px-3 py-2"
+                  className={['grid grid-cols-[64px,1fr,1fr] items-center px-3 py-2', rowTint].join(' ')}
                 >
                   <div className="text-xs font-semibold text-muted-foreground">
                     {row.moveNumber}.
@@ -685,35 +704,39 @@ export function GameReplay({
           </div>
         </div>
 
-        <div className="mt-3 text-xs text-muted-foreground">
-          current fen:{' '}
-          <span className="font-mono break-all text-foreground">{fen || '(empty)'}</span>
-        </div>
-
         {/* analysis summary — only shown when done */}
         {analysis.status === 'done' ? (
           <div className="mt-4 grid gap-3">
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <span className="text-red-500 font-semibold">
-                {analysis.result.turningPoints.filter((t) => t.type === 'blunder').length} blunders
-              </span>
-              <span className="text-orange-400 font-semibold">
-                {analysis.result.turningPoints.filter((t) => t.type === 'mistake').length} mistakes
-              </span>
-              <span className="text-yellow-500">
-                {analysis.result.turningPoints.filter((t) => t.type === 'inaccuracy').length}{' '}
-                inaccuracies
-              </span>
-              {drills.length > 0 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="ml-auto"
-                  onClick={() => setDrillIndex(0)}
-                >
-                  practice {drills.length} blunder{drills.length > 1 ? 's' : ''}
-                </Button>
-              )}
+            {/* stat pills — colored pill per category for quick scanning */}
+            <div className="flex flex-wrap items-center gap-2">
+              {(() => {
+                const blunders = analysis.result.turningPoints.filter((t) => t.type === 'blunder').length;
+                const mistakes = analysis.result.turningPoints.filter((t) => t.type === 'mistake').length;
+                const inaccuracies = analysis.result.turningPoints.filter((t) => t.type === 'inaccuracy').length;
+                return (
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-500">
+                      <span className="text-sm font-bold">{blunders}</span> blunder{blunders !== 1 ? 's' : ''}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-400/10 px-2.5 py-1 text-xs font-semibold text-orange-400">
+                      <span className="text-sm font-bold">{mistakes}</span> mistake{mistakes !== 1 ? 's' : ''}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2.5 py-1 text-xs font-semibold text-yellow-600 dark:text-yellow-500">
+                      <span className="text-sm font-bold">{inaccuracies}</span> inaccurac{inaccuracies !== 1 ? 'ies' : 'y'}
+                    </span>
+                    {drills.length > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="ml-auto"
+                        onClick={() => setDrillIndex(0)}
+                      >
+                        practice {drills.length} blunder{drills.length > 1 ? 's' : ''}
+                      </Button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* blunder + mistake list with ai explanations */}
@@ -737,7 +760,12 @@ export function GameReplay({
                     return (
                       <div
                         key={expId}
-                        className="rounded-lg border bg-background p-3 text-sm cursor-pointer hover:bg-muted/30 transition-colors"
+                        className={[
+                          'rounded-lg border bg-background p-3 text-sm cursor-pointer hover:bg-muted/30 transition-colors',
+                          // colored left border for instant severity scan
+                          'border-l-2',
+                          tp.type === 'blunder' ? 'border-l-red-500' : 'border-l-orange-400',
+                        ].join(' ')}
                         onClick={() => {
                           // jump board to the position before this error
                           const ply =
