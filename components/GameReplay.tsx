@@ -169,39 +169,38 @@ export function GameReplay({
 
   const maxIndex = Math.max(0, fenArr.length - 1);
   const [index, setIndex] = React.useState(0);
-  const [analysis, setAnalysis] = React.useState<AnalysisState>({ status: 'idle' });
+  // lazy initializer avoids the react 18 strict-mode double-invoke problem:
+  // with useRef + useEffect the second effect run would overwrite 'done' → 'idle'.
+  // by initializing state directly from the server-provided prop, the state is set
+  // exactly once and strict-mode re-invocations have no effect.
+  const [analysis, setAnalysis] = React.useState<AnalysisState>(() =>
+    initialAnalysis ? { status: 'done', result: initialAnalysis } : { status: 'idle' },
+  );
+
   const [showBestMove, setShowBestMove] = React.useState(false);
   // null = replay mode; number = active drill index
   const [drillIndex, setDrillIndex] = React.useState<number | null>(null);
   // 0-100 progress for the analysis progress bar (timer-driven estimate)
   const [analysisProgress, setAnalysisProgress] = React.useState(0);
   // ai-generated explanations keyed by `${moveNumber}-${side}`
-  const [explanations, setExplanations] = React.useState<Map<string, BlunderExplanation>>(
-    new Map(),
-  );
+  // lazy-init from server-provided explanations if available (same strict-mode-safe pattern)
+  const [explanations, setExplanations] = React.useState<Map<string, BlunderExplanation>>(() => {
+    if (!initialAnalysis?.explanations?.length) return new Map();
+    const map = new Map<string, BlunderExplanation>();
+    for (const exp of initialAnalysis.explanations) map.set(exp.id, exp);
+    return map;
+  });
   const [explanationsLoading, setExplanationsLoading] = React.useState(false);
 
-  // true after the first mount — used to distinguish mount from game-switch
-  const initialAnalysisApplied = React.useRef(false);
-
-  // reset board position, analysis, best-move toggle, drill mode, and explanations on game change.
-  // on first mount: use server-provided initialAnalysis if available so already-analyzed
-  // games show their results immediately without requiring a re-click of "analyze".
+  // reset non-analysis state on game change.
+  // key={uuid} in the parent (game/page.tsx) guarantees a fresh component instance
+  // per game, so we never need to reset analysis or explanations here — they are
+  // already correct from the useState lazy initializers above.
   React.useEffect(() => {
     setIndex(0);
     setShowBestMove(false);
     setDrillIndex(null);
-    setExplanations(new Map());
     setExplanationsLoading(false);
-
-    if (!initialAnalysisApplied.current && initialAnalysis) {
-      // first mount — pre-populate with cached analysis from the server
-      initialAnalysisApplied.current = true;
-      setAnalysis({ status: 'done', result: initialAnalysis });
-    } else {
-      // game switch via dropdown — start fresh
-      setAnalysis({ status: 'idle' });
-    }
   }, [uuid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // load or fetch ai explanations when analysis completes
