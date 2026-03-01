@@ -9,6 +9,8 @@ import { DrillPanel } from '@/components/DrillPanel';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Button } from '@/components/ui/button';
 import { FREE_LIMIT } from '@/lib/hooks/useAnalysisQuota';
+
+type QuotaState = { used: number; limit: number; remaining: number } | null;
 import type { TurningPoint, Pattern, BlunderExplanation } from '@/lib/interfaces/analysis';
 
 type GameOption = { uuid: string; label: string };
@@ -149,6 +151,16 @@ export function GameReplay({
 
   // paywall shown when server returns 402 (quota exceeded)
   const [showPaywall, setShowPaywall] = React.useState(false);
+  // live quota fetched from the server — null until loaded
+  const [quota, setQuota] = React.useState<QuotaState>(null);
+
+  // fetch quota once on mount so the hint reflects real usage
+  React.useEffect(() => {
+    fetch('/api/user/quota')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: QuotaState) => { if (data) setQuota(data); })
+      .catch(() => {});
+  }, []);
 
   const maxIndex = Math.max(0, fenArr.length - 1);
   const [index, setIndex] = React.useState(0);
@@ -322,6 +334,7 @@ export function GameReplay({
       if (res.status === 402 || data.error === 'quota_exceeded') {
         setAnalysis({ status: 'idle' });
         setShowPaywall(true);
+        setQuota((q) => q ? { ...q, remaining: 0, used: q.limit } : q);
         return;
       }
 
@@ -338,6 +351,14 @@ export function GameReplay({
           patterns: data.patterns ?? [],
         },
       });
+
+      // refresh quota after a fresh analysis (not needed for cached results)
+      if (!data.fromCache) {
+        fetch('/api/user/quota')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((q: QuotaState) => { if (q) setQuota(q); })
+          .catch(() => {});
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'network error';
       setAnalysis({ status: 'error', message });
@@ -526,10 +547,15 @@ export function GameReplay({
             >
               {isAnalyzing ? 'analyzing…' : analysis.status === 'done' ? 're-analyze' : 'analyze'}
             </Button>
-            {/* quota hint — server enforces the limit, we just hint the free tier */}
+            {/* quota hint — live from server, falls back to static limit */}
             {analysis.status === 'idle' && (
-              <span className="text-[10px] text-muted-foreground">
-                {FREE_LIMIT} free analyses/month
+              <span className={[
+                'text-[10px]',
+                quota && quota.remaining === 0 ? 'text-destructive font-semibold' : 'text-muted-foreground',
+              ].join(' ')}>
+                {quota
+                  ? `${quota.remaining} of ${quota.limit} analyses left`
+                  : `${FREE_LIMIT} free analyses/month`}
               </span>
             )}
           </div>
