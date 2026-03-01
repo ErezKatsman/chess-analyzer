@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import { ChessBoard } from '@/components/ChessBoard';
 import { EvalGraph } from '@/components/EvalGraph';
 import { DrillPanel } from '@/components/DrillPanel';
+import { PaywallModal } from '@/components/PaywallModal';
 import { Button } from '@/components/ui/button';
+import { FREE_LIMIT } from '@/lib/hooks/useAnalysisQuota';
 import type { TurningPoint, Pattern, BlunderExplanation } from '@/lib/interfaces/analysis';
 
 type GameOption = { uuid: string; label: string };
@@ -144,6 +146,9 @@ export function GameReplay({
   pgn,
 }: Props) {
   const router = useRouter();
+
+  // paywall shown when server returns 402 (quota exceeded)
+  const [showPaywall, setShowPaywall] = React.useState(false);
 
   const maxIndex = Math.max(0, fenArr.length - 1);
   const [index, setIndex] = React.useState(0);
@@ -302,7 +307,7 @@ export function GameReplay({
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pgn, playerSide: isWhite ? 'white' : 'black' }),
+        body: JSON.stringify({ pgn, playerSide: isWhite ? 'white' : 'black', gameUuid: uuid }),
       });
 
       const data = (await res.json()) as {
@@ -310,7 +315,15 @@ export function GameReplay({
         turningPoints?: TurningPoint[];
         patterns?: Pattern[];
         error?: string;
+        fromCache?: boolean;
       };
+
+      // quota exceeded — show paywall (server-enforced)
+      if (res.status === 402 || data.error === 'quota_exceeded') {
+        setAnalysis({ status: 'idle' });
+        setShowPaywall(true);
+        return;
+      }
 
       if (!res.ok || data.error) {
         setAnalysis({ status: 'error', message: data.error ?? 'analysis failed' });
@@ -342,6 +355,7 @@ export function GameReplay({
         {...drill}
         drillIndex={drillIndex}
         totalDrills={drills.length}
+        gameUuid={uuid}
         onNext={drillIndex < drills.length - 1 ? () => setDrillIndex(drillIndex + 1) : undefined}
         onExit={() => setDrillIndex(null)}
       />
@@ -349,6 +363,7 @@ export function GameReplay({
   }
 
   return (
+    <>
     <div className="grid gap-4 lg:grid-cols-[minmax(320px,560px),1fr] items-start">
       {/* left panel: board + controls */}
       <div className="rounded-2xl border bg-card p-4 shadow-sm">
@@ -501,15 +516,23 @@ export function GameReplay({
             <div className="text-xs text-muted-foreground">click a move to jump</div>
           </div>
 
-          <Button
-            type="button"
-            variant={analysis.status === 'done' ? 'outline' : 'default'}
-            size="sm"
-            onClick={handleAnalyze}
-            disabled={isAnalyzing}
-          >
-            {isAnalyzing ? 'analyzing…' : analysis.status === 'done' ? 're-analyze' : 'analyze'}
-          </Button>
+          <div className="flex flex-col items-end gap-0.5">
+            <Button
+              type="button"
+              variant={analysis.status === 'done' ? 'outline' : 'default'}
+              size="sm"
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? 'analyzing…' : analysis.status === 'done' ? 're-analyze' : 'analyze'}
+            </Button>
+            {/* quota hint — server enforces the limit, we just hint the free tier */}
+            {analysis.status === 'idle' && (
+              <span className="text-[10px] text-muted-foreground">
+                {FREE_LIMIT} free analyses/month
+              </span>
+            )}
+          </div>
         </div>
 
         {/* error banner */}
@@ -718,5 +741,9 @@ export function GameReplay({
         ) : null}
       </div>
     </div>
+
+    {/* paywall modal — shown when user has used all free analyses */}
+    <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} />
+    </>
   );
 }
