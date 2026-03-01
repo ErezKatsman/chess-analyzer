@@ -1,10 +1,16 @@
 // app/game/page.tsx
 import Link from 'next/link';
+import { auth } from '@clerk/nextjs/server';
 
 import type { IGame } from '@/lib/interfaces/games';
+import type { TurningPoint, Pattern, BlunderExplanation } from '@/lib/interfaces/analysis';
 import { fetchGamesWithArchive, fetchMonthlyGames } from '@/lib/userUtils';
+import { connectDB } from '@/lib/db/mongo';
+import { GameAnalysis } from '@/lib/db/schemas';
 import { GameReplay } from '@/components/GameReplay';
 import { getSanMovesFromPgn } from '@/lib/chess/moves';
+
+type PlyEval = { ply: number; fen: string; cp: number | null; mate: number | null; bestMove: string | null };
 
 export const dynamic = 'force-dynamic';
 
@@ -136,12 +142,43 @@ export default async function GamePage({ searchParams }: GamePageProps) {
     label: `${g.opponent.name} • ${g.timeClass} • ${g.gameDetails.result}`,
   }));
 
+  // load cached analysis server-side so already-analyzed games show results immediately
+  const { userId } = await auth();
+  let initialAnalysis: {
+    evals: PlyEval[];
+    turningPoints: TurningPoint[];
+    patterns: Pattern[];
+    explanations: BlunderExplanation[];
+  } | null = null;
+
+  if (userId) {
+    try {
+      await connectDB();
+      const cached = await GameAnalysis.findOne(
+        { clerkUserId: userId, gameUuid: uuid },
+        { evals: 1, turningPoints: 1, patterns: 1, explanations: 1 },
+      ).lean();
+
+      if (cached) {
+        initialAnalysis = {
+          evals: (cached.evals ?? []) as PlyEval[],
+          turningPoints: (cached.turningPoints ?? []) as TurningPoint[],
+          patterns: (cached.patterns ?? []) as Pattern[],
+          explanations: (cached.explanations ?? []) as BlunderExplanation[],
+        };
+      }
+    } catch {
+      // non-fatal — page renders with analyze button if db unavailable
+    }
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <GameReplay
           userName={userName}
           uuid={game.uuid}
+          initialAnalysis={initialAnalysis}
           opponentName={game.opponent.name}
           resultText={game.gameDetails.result}
           gameUrl={game.url}

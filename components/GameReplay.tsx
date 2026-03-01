@@ -40,6 +40,9 @@ type Props = {
   userName: string;
   uuid: string;
 
+  // pre-loaded from mongodb server-side — skips the "analyze" step on reopen
+  initialAnalysis?: AnalysisResult | null;
+
   opponentName: string;
   resultText: string;
 
@@ -132,6 +135,7 @@ function patternTagClass(tag: Pattern['tag']): string {
 export function GameReplay({
   userName,
   uuid,
+  initialAnalysis,
   opponentName,
   resultText,
   gameUrl,
@@ -177,15 +181,28 @@ export function GameReplay({
   );
   const [explanationsLoading, setExplanationsLoading] = React.useState(false);
 
-  // reset board position, analysis, best-move toggle, drill mode, and explanations on game change
+  // true after the first mount — used to distinguish mount from game-switch
+  const initialAnalysisApplied = React.useRef(false);
+
+  // reset board position, analysis, best-move toggle, drill mode, and explanations on game change.
+  // on first mount: use server-provided initialAnalysis if available so already-analyzed
+  // games show their results immediately without requiring a re-click of "analyze".
   React.useEffect(() => {
     setIndex(0);
-    setAnalysis({ status: 'idle' });
     setShowBestMove(false);
     setDrillIndex(null);
     setExplanations(new Map());
     setExplanationsLoading(false);
-  }, [uuid]);
+
+    if (!initialAnalysisApplied.current && initialAnalysis) {
+      // first mount — pre-populate with cached analysis from the server
+      initialAnalysisApplied.current = true;
+      setAnalysis({ status: 'done', result: initialAnalysis });
+    } else {
+      // game switch via dropdown — start fresh
+      setAnalysis({ status: 'idle' });
+    }
+  }, [uuid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // load or fetch ai explanations when analysis completes
   React.useEffect(() => {
