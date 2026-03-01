@@ -1,10 +1,11 @@
 import Link from 'next/link';
 
 import type { IGame } from '@/lib/interfaces/games';
-import { fetchGamesWithArchive } from '@/lib/userUtils';
-import { fetchMonthlyGames, fetchUserArchives } from '@/lib/services/chesscom';
+import { fetchUserArchives } from '@/lib/services/chesscom';
+import { fetchMonthlyGamesCached, fetchLatestMonthlyGamesCached } from '@/lib/db/cachedChesscom';
 import { GamesTable } from '@/components/GamesTable';
 import { MonthPicker } from '@/components/MonthPicker';
+import { StatsBar } from '@/components/StatsBar';
 
 interface UserPageProps {
   searchParams: {
@@ -83,8 +84,8 @@ export default async function UserPage({ searchParams }: UserPageProps) {
   const [archivesResult, gamesResult] = await Promise.allSettled([
     fetchUserArchives(userName),
     hasExplicitMonth
-      ? fetchMonthlyGames({ userName, year: requestedYear, month: requestedMonth })
-      : fetchGamesWithArchive(userName),
+      ? fetchMonthlyGamesCached({ userName, year: requestedYear, month: requestedMonth })
+      : fetchLatestMonthlyGamesCached(userName),
   ]);
 
   const archives = archivesResult.status === 'fulfilled' ? archivesResult.value : [];
@@ -152,12 +153,15 @@ export default async function UserPage({ searchParams }: UserPageProps) {
             </div>
           </CardShell>
         ) : (
-          <GamesTable
-            userName={userName}
-            games={games}
-            archiveYear={archiveYear}
-            archiveMonth={archiveMonth}
-          />
+          <>
+            <StatsBar games={games} userName={userName} />
+            <GamesTable
+              userName={userName}
+              games={games}
+              archiveYear={archiveYear}
+              archiveMonth={archiveMonth}
+            />
+          </>
         )}
       </div>
     </main>
