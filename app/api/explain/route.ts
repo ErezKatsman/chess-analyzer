@@ -2,15 +2,18 @@
 // accepts turning points and returns ai-generated plain-english explanations
 // uses claude haiku — cheap and fast for short chess coaching text
 import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import Anthropic from '@anthropic-ai/sdk';
-import type { TurningPoint } from '@/lib/interfaces/analysis';
-import type { BlunderExplanation } from '@/lib/interfaces/analysis';
+import type { TurningPoint, BlunderExplanation } from '@/lib/interfaces/analysis';
+import { connectDB } from '@/lib/db/mongo';
+import { GameAnalysis } from '@/lib/db/schemas';
 
 // only explain blunders and mistakes — inaccuracies are too minor to warrant ai cost
 const EXPLAIN_TYPES = new Set(['blunder', 'mistake']);
 
 type ExplainRequestBody = {
   turningPoints: TurningPoint[];
+  gameUuid?: string;
 };
 
 // build a compact description of each turning point for the prompt
@@ -24,6 +27,8 @@ function describePoint(tp: TurningPoint): string {
 }
 
 export async function POST(request: Request) {
+  const { userId } = await auth();
+
   let body: unknown;
   try {
     body = await request.json();
@@ -31,10 +36,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid json body' }, { status: 400 });
   }
 
-  const { turningPoints } = body as ExplainRequestBody;
+  const { turningPoints, gameUuid } = body as ExplainRequestBody;
 
   if (!Array.isArray(turningPoints) || turningPoints.length === 0) {
     return NextResponse.json({ explanations: [] });
+  }
+
+  // if we have a saved game + signed-in user, check if explanations are already stored
+  if (userId && gameUuid) {
+    await connectDB();
+    const saved = await GameAnalysis.findOne(
+      { clerkUserId: userId, gameUuid },
+      { explanations: 1 },
+    ).lean();
+
+    if (saved?.explanations && saved.explanations.length > 0) {
+      return NextResponse.json({ explanations: saved.explanations, fromCache: true });
+    }
   }
 
   // no api key configured — return empty so the ui falls back to one-liners
@@ -83,6 +101,15 @@ Return ONLY a valid JSON array with this shape (no markdown, no extra text):
     } catch {
       // if parse fails, return empty so the ui falls back gracefully
       return NextResponse.json({ explanations: [] });
+    }
+
+    // persist to mongodb so future loads skip claude entirely
+    if (userId && gameUuid && explanations.length > 0) {
+      await connectDB();
+      await GameAnalysis.updateOne(
+        { clerkUserId: userId, gameUuid },
+        { $set: { explanations } },
+      );
     }
 
     return NextResponse.json({ explanations });

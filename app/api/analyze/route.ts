@@ -114,6 +114,7 @@ export async function POST(request: Request) {
         evals: cached.evals,
         turningPoints: cached.turningPoints,
         patterns: cached.patterns,
+        explanations: cached.explanations ?? [],
         fromCache: true,
       });
     }

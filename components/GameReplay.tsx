@@ -27,6 +27,7 @@ type AnalysisResult = {
   evals: PlyEval[];
   turningPoints: TurningPoint[];
   patterns: Pattern[];
+  explanations?: BlunderExplanation[];
 };
 
 type AnalysisState =
@@ -186,11 +187,20 @@ export function GameReplay({
     setExplanationsLoading(false);
   }, [uuid]);
 
-  // fetch ai explanations automatically when stockfish analysis finishes
+  // load or fetch ai explanations when analysis completes
   React.useEffect(() => {
     if (analysis.status !== 'done') return;
 
-    const { turningPoints } = analysis.result;
+    const { turningPoints, explanations: savedExplanations } = analysis.result;
+
+    // if the analyze response already included saved explanations, use them directly
+    if (savedExplanations && savedExplanations.length > 0) {
+      const map = new Map<string, BlunderExplanation>();
+      for (const exp of savedExplanations) map.set(exp.id, exp);
+      setExplanations(map);
+      return;
+    }
+
     const blundersAndMistakes = turningPoints.filter(
       (tp) => tp.type === 'blunder' || tp.type === 'mistake',
     );
@@ -201,15 +211,13 @@ export function GameReplay({
     fetch('/api/explain', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ turningPoints: blundersAndMistakes }),
+      body: JSON.stringify({ turningPoints: blundersAndMistakes, gameUuid: uuid }),
     })
       .then((res) => res.json())
       .then((data: { explanations?: BlunderExplanation[] }) => {
         if (!data.explanations) return;
         const map = new Map<string, BlunderExplanation>();
-        for (const exp of data.explanations) {
-          map.set(exp.id, exp);
-        }
+        for (const exp of data.explanations) map.set(exp.id, exp);
         setExplanations(map);
       })
       .catch(() => {
@@ -326,6 +334,7 @@ export function GameReplay({
         evals?: PlyEval[];
         turningPoints?: TurningPoint[];
         patterns?: Pattern[];
+        explanations?: BlunderExplanation[];
         error?: string;
         fromCache?: boolean;
       };
@@ -349,6 +358,7 @@ export function GameReplay({
           evals: data.evals ?? [],
           turningPoints: data.turningPoints ?? [],
           patterns: data.patterns ?? [],
+          explanations: data.explanations ?? [],
         },
       });
 
@@ -538,25 +548,29 @@ export function GameReplay({
           </div>
 
           <div className="flex flex-col items-end gap-0.5">
-            <Button
-              type="button"
-              variant={analysis.status === 'done' ? 'outline' : 'default'}
-              size="sm"
-              onClick={handleAnalyze}
-              disabled={isAnalyzing}
-            >
-              {isAnalyzing ? 'analyzing…' : analysis.status === 'done' ? 're-analyze' : 'analyze'}
-            </Button>
-            {/* quota hint — live from server, falls back to static limit */}
-            {analysis.status === 'idle' && (
-              <span className={[
-                'text-[10px]',
-                quota && quota.remaining === 0 ? 'text-destructive font-semibold' : 'text-muted-foreground',
-              ].join(' ')}>
-                {quota
-                  ? `${quota.remaining} of ${quota.limit} analyses left`
-                  : `${FREE_LIMIT} free analyses/month`}
-              </span>
+            {analysis.status === 'done' ? (
+              <span className="text-xs font-semibold text-emerald-500">✓ analyzed</span>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing}
+                >
+                  {isAnalyzing ? 'analyzing…' : 'analyze'}
+                </Button>
+                {/* quota hint — live from server, falls back to static limit */}
+                <span className={[
+                  'text-[10px]',
+                  quota && quota.remaining === 0 ? 'text-destructive font-semibold' : 'text-muted-foreground',
+                ].join(' ')}>
+                  {quota
+                    ? `${quota.remaining} of ${quota.limit} analyses left`
+                    : `${FREE_LIMIT} free analyses/month`}
+                </span>
+              </>
             )}
           </div>
         </div>

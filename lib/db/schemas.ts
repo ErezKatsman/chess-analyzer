@@ -15,6 +15,7 @@ export interface IGameAnalysis extends Document {
   evals: object[];
   turningPoints: object[];
   patterns: object[];
+  explanations: object[];
   analyzedAt: Date;
 }
 
@@ -26,6 +27,7 @@ const GameAnalysisSchema = new Schema<IGameAnalysis>({
   evals: { type: [Schema.Types.Mixed], default: [] },
   turningPoints: { type: [Schema.Types.Mixed], default: [] },
   patterns: { type: [Schema.Types.Mixed], default: [] },
+  explanations: { type: [Schema.Types.Mixed], default: [] },
   analyzedAt: { type: Date, default: Date.now },
 });
 
