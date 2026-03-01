@@ -193,6 +193,10 @@ export function GameReplay({
     return map;
   });
   const [explanationsLoading, setExplanationsLoading] = React.useState(false);
+  // 'moves' by default; auto-init to 'analysis' when opening an already-analyzed game
+  const [activeTab, setActiveTab] = React.useState<'moves' | 'analysis'>(() =>
+    initialAnalysis ? 'analysis' : 'moves',
+  );
 
   // reset non-analysis state on game change.
   // key={uuid} in the parent (game/page.tsx) guarantees a fresh component instance
@@ -379,6 +383,8 @@ export function GameReplay({
           explanations: data.explanations ?? [],
         },
       });
+      // switch to analysis tab so results are immediately visible
+      setActiveTab('analysis');
 
       // refresh quota after a fresh analysis (not needed for cached results)
       if (!data.fromCache) {
@@ -561,12 +567,37 @@ export function GameReplay({
         </div>
       </div>
 
-      {/* right panel: moves + analysis */}
+      {/* right panel: tabbed moves / analysis */}
       <div className="rounded-2xl border bg-card p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">moves</div>
-            <div className="text-xs text-muted-foreground">click a move to jump</div>
+        {/* header: tab switcher (left) + action button (right) */}
+        <div className="flex items-center justify-between gap-3 border-b pb-3">
+          <div className="flex gap-1">
+            {(['moves', 'analysis'] as const).map((tab) => {
+              const issueCount =
+                tab === 'analysis' && analysis.status === 'done'
+                  ? analysis.result.turningPoints.length
+                  : 0;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={[
+                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                    activeTab === tab
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                  ].join(' ')}
+                >
+                  {tab}
+                  {issueCount > 0 ? (
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                      {issueCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex flex-col items-end gap-0.5">
@@ -597,14 +628,14 @@ export function GameReplay({
           </div>
         </div>
 
-        {/* error banner */}
+        {/* error banner — always visible regardless of active tab */}
         {analysis.status === 'error' ? (
           <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {analysis.message}
           </div>
         ) : null}
 
-        {/* analysis progress bar */}
+        {/* analysis progress bar — always visible */}
         {analysis.status === 'loading' ? (
           <div className="mt-3 rounded-lg border bg-muted/50 px-3 py-3 space-y-2">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -620,8 +651,9 @@ export function GameReplay({
           </div>
         ) : null}
 
-        {/* move list */}
-        <div className="mt-3 max-h-[720px] overflow-auto rounded-xl border bg-background">
+        {/* ── moves tab ── */}
+        {activeTab === 'moves' ? (
+        <div className="mt-3 max-h-[calc(100vh-300px)] overflow-auto rounded-xl border bg-background">
           <div className="grid grid-cols-[64px,1fr,1fr] text-xs font-semibold text-muted-foreground px-3 py-2 border-b">
             <div>#</div>
             <div>white</div>
@@ -703,10 +735,13 @@ export function GameReplay({
             })}
           </div>
         </div>
+        ) : null /* end moves tab */}
 
-        {/* analysis summary — only shown when done */}
-        {analysis.status === 'done' ? (
-          <div className="mt-4 grid gap-3">
+        {/* ── analysis tab ── */}
+        {activeTab === 'analysis' ? (
+          <div className="mt-3 max-h-[calc(100vh-300px)] overflow-y-auto grid gap-3">
+            {analysis.status === 'done' ? (
+            <>
             {/* stat pills — colored pill per category for quick scanning */}
             <div className="flex flex-wrap items-center gap-2">
               {(() => {
@@ -825,8 +860,15 @@ export function GameReplay({
                 ))}
               </div>
             ) : null}
+            </> /* end analysis.status === 'done' fragment */
+            ) : (
+              /* analysis not yet run */
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                run analysis to see insights
+              </div>
+            )}
           </div>
-        ) : null}
+        ) : null /* end analysis tab */}
       </div>
     </div>
 
