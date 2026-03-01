@@ -384,6 +384,10 @@ export function GameReplay({
           .then((r) => (r.ok ? r.json() : null))
           .then((q: QuotaState) => { if (q) setQuota(q); })
           .catch(() => {});
+        // clear next.js router cache so the games-table "✓ analyzed" badge is visible
+        // immediately when the user navigates back — without this, next.js may serve
+        // the stale pre-analysis snapshot from its client-side cache.
+        router.refresh();
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'network error';
