@@ -2,10 +2,20 @@
 import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
+import { auth } from '@clerk/nextjs/server';
 import { getParsedMovesFromPgn } from '@/lib/chess/moves';
 import { evaluateFens } from '@/lib/analysis/stockfish';
 import { computeTurningPoints } from '@/lib/analysis/insights';
 import { detectPatterns } from '@/lib/analysis/patterns';
+import { connectDB } from '@/lib/db/mongo';
+import { GameAnalysis, UserQuota } from '@/lib/db/schemas';
+
+const FREE_LIMIT = 3;
+
+function currentMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 // lite single-threaded variant — lighter and simpler for server use
 function getStockfishPath(): string {
@@ -65,11 +75,15 @@ export async function GET() {
 }
 
 // POST /api/analyze — analyze a game
-// body: { pgn: string }
-// response: { evals: Array<{ ply, fen, cp, mate, bestMove }> }
+// body: { pgn: string, playerSide?: 'white'|'black', gameUuid?: string }
 export async function POST(request: Request) {
-  let body: unknown;
+  // require auth
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
 
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
@@ -84,7 +98,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'body must be { pgn: string }' }, { status: 400 });
   }
 
-  const { pgn, playerSide } = body as { pgn: string; playerSide?: 'white' | 'black' };
+  const { pgn, playerSide, gameUuid } = body as {
+    pgn: string;
+    playerSide?: 'white' | 'black';
+    gameUuid?: string;
+  };
+
+  await connectDB();
+
+  // check mongodb cache first — skip stockfish if already analyzed
+  if (gameUuid) {
+    const cached = await GameAnalysis.findOne({ clerkUserId: userId, gameUuid }).lean();
+    if (cached) {
+      return NextResponse.json({
+        evals: cached.evals,
+        turningPoints: cached.turningPoints,
+        patterns: cached.patterns,
+        fromCache: true,
+      });
+    }
+  }
+
+  // check + increment quota (server-side, unenforced by client)
+  const month = currentMonth();
+  const quota = await UserQuota.findOneAndUpdate(
+    { clerkUserId: userId, month },
+    { $setOnInsert: { clerkUserId: userId, month, count: 0 } },
+    { upsert: true, new: true },
+  );
+
+  if (quota.count >= FREE_LIMIT) {
+    return NextResponse.json({ error: 'quota_exceeded', limit: FREE_LIMIT }, { status: 402 });
+  }
+
+  // increment count before running analysis (prevents race conditions)
+  await UserQuota.updateOne({ clerkUserId: userId, month }, { $inc: { count: 1 }, updatedAt: new Date() });
 
   const moves = getParsedMovesFromPgn(pgn);
   if (moves.length === 0) {
@@ -94,8 +142,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // evaluate starting position + position after each move
-  // ply 0 = starting position, ply N = after move N
   const fens = [moves[0].fenBefore, ...moves.map((m) => m.fenAfter)];
 
   try {
@@ -110,14 +156,19 @@ export async function POST(request: Request) {
     }));
 
     const allTurningPoints = computeTurningPoints(moves, rawEvals);
-
-    // filter to player's moves only when playerSide is provided
     const turningPoints = playerSide
       ? allTurningPoints.filter((tp) => tp.side === playerSide)
       : allTurningPoints;
-
-    // detect patterns from the player's turning points only
     const patterns = detectPatterns(moves, rawEvals, turningPoints);
+
+    // save to mongodb so future loads are instant
+    if (gameUuid) {
+      await GameAnalysis.findOneAndUpdate(
+        { clerkUserId: userId, gameUuid },
+        { clerkUserId: userId, gameUuid, pgn, playerSide: playerSide ?? 'white', evals, turningPoints, patterns, analyzedAt: new Date() },
+        { upsert: true },
+      );
+    }
 
     return NextResponse.json({ evals, turningPoints, patterns });
   } catch (err) {
