@@ -246,6 +246,12 @@ export function GameReplay({
     return map;
   }, [analysis]);
 
+  // seek to the position before a blunder, then animate the blunder move after a short delay
+  const handleSeekAndPlay = React.useCallback((plyBefore: number) => {
+    setIndex(plyBefore);
+    setTimeout(() => setIndex(plyBefore + 1), 350);
+  }, []);
+
   const handleSelectGame = (nextUuid: string) => {
     if (!nextUuid || nextUuid === uuid) return;
     const params = new URLSearchParams({ userName, uuid: nextUuid });
@@ -592,6 +598,7 @@ export function GameReplay({
             explanationsLoading={explanationsLoading}
             maxIndex={maxIndex}
             onSeek={setIndex}
+            onSeekAndPlay={handleSeekAndPlay}
             onStartDrills={() => setDrillIndex(0)}
           />
         ) : null /* end analysis tab */}

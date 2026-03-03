@@ -15,6 +15,8 @@ type AnalysisPanelProps = {
   explanationsLoading: boolean;
   maxIndex: number;
   onSeek: (ply: number) => void;
+  // seek to plyBefore then animate the blunder move (plyBefore + 1)
+  onSeekAndPlay: (plyBefore: number) => void;
   onStartDrills: () => void;
 };
 
@@ -25,6 +27,7 @@ export function AnalysisPanel({
   explanationsLoading,
   maxIndex,
   onSeek,
+  onSeekAndPlay,
   onStartDrills,
 }: AnalysisPanelProps) {
   return (
@@ -95,12 +98,13 @@ export function AnalysisPanel({
                         tp.type === 'blunder' ? 'border-l-red-500' : 'border-l-orange-400',
                       ].join(' ')}
                       onClick={() => {
-                        // jump board to the position before this error
+                        // ply of the position before this error (0-indexed into fenArr)
                         const ply =
                           tp.side === 'white'
                             ? (tp.moveNumber - 1) * 2
                             : (tp.moveNumber - 1) * 2 + 1;
-                        onSeek(Math.min(maxIndex, ply));
+                        // seek to pre-move position then animate the blunder move
+                        onSeekAndPlay(Math.min(maxIndex - 1, ply));
                       }}
                     >
                       <div className="flex items-center gap-2">
