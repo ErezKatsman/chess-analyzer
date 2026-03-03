@@ -8,7 +8,7 @@ import { evaluateFens } from '@/lib/analysis/stockfish';
 import { computeTurningPoints } from '@/lib/analysis/insights';
 import { detectPatterns } from '@/lib/analysis/patterns';
 import { connectDB } from '@/lib/db/mongo';
-import { GameAnalysis, UserQuota } from '@/lib/db/schemas';
+import { GameAnalysis, UserQuota, UserProfile } from '@/lib/db/schemas';
 
 const FREE_LIMIT = 3;
 
@@ -120,20 +120,25 @@ export async function POST(request: Request) {
     }
   }
 
-  // check + increment quota (server-side, unenforced by client)
-  const month = currentMonth();
-  const quota = await UserQuota.findOneAndUpdate(
-    { clerkUserId: userId, month },
-    { $setOnInsert: { clerkUserId: userId, month, count: 0 } },
-    { upsert: true, new: true },
-  );
+  // paid users skip the monthly quota gate entirely
+  const profile = await UserProfile.findOne({ clerkUserId: userId }, { plan: 1 }).lean();
+  const isPaid = profile?.plan === 'paid';
 
-  if (quota.count >= FREE_LIMIT) {
-    return NextResponse.json({ error: 'quota_exceeded', limit: FREE_LIMIT }, { status: 402 });
+  if (!isPaid) {
+    // check + increment quota (server-side, unenforced by client)
+    const month = currentMonth();
+    const quota = await UserQuota.findOneAndUpdate(
+      { clerkUserId: userId, month },
+      { $setOnInsert: { clerkUserId: userId, month, count: 0 } },
+      { upsert: true, new: true },
+    );
+
+    if (quota.count >= FREE_LIMIT) {
+      return NextResponse.json({ error: 'quota_exceeded', limit: FREE_LIMIT }, { status: 402 });
+    }
+
+    await UserQuota.updateOne({ clerkUserId: userId, month }, { $inc: { count: 1 }, updatedAt: new Date() });
   }
-
-  // increment count before running analysis (prevents race conditions)
-  await UserQuota.updateOne({ clerkUserId: userId, month }, { $inc: { count: 1 }, updatedAt: new Date() });
 
   const moves = getParsedMovesFromPgn(pgn);
   if (moves.length === 0) {

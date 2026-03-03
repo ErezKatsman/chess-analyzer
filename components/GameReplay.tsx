@@ -23,6 +23,8 @@ import type {
 import { formatEndTime, groupMoves } from '@/components/game-replay/utils';
 import { MovesList } from '@/components/game-replay/MovesList';
 import { AnalysisPanel } from '@/components/game-replay/AnalysisPanel';
+import { LessonCard } from '@/components/LessonCard';
+import type { Lesson } from '@/lib/interfaces/analysis';
 
 export function GameReplay({
   userName,
@@ -83,8 +85,11 @@ export function GameReplay({
     return map;
   });
   const [explanationsLoading, setExplanationsLoading] = React.useState(false);
+  // ai-generated lessons derived from detected patterns
+  const [lessons, setLessons] = React.useState<Lesson[]>([]);
+  const [lessonsLoading, setLessonsLoading] = React.useState(false);
   // 'moves' by default; auto-init to 'analysis' when opening an already-analyzed game
-  const [activeTab, setActiveTab] = React.useState<'moves' | 'analysis'>(() =>
+  const [activeTab, setActiveTab] = React.useState<'moves' | 'analysis' | 'lessons'>(() =>
     initialAnalysis ? 'analysis' : 'moves',
   );
 
@@ -136,6 +141,26 @@ export function GameReplay({
         // silent fail — ui falls back to one-liner
       })
       .finally(() => setExplanationsLoading(false));
+  }, [analysis.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // fetch lessons when analysis completes — one call per pattern set, cached in mongo
+  React.useEffect(() => {
+    if (analysis.status !== 'done') return;
+    const { patterns, turningPoints } = analysis.result;
+    if (!patterns || patterns.length === 0) return;
+
+    setLessonsLoading(true);
+    fetch('/api/lessons', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ patterns, turningPoints, gameUuid: uuid }),
+    })
+      .then((res) => res.json())
+      .then((data: { lessons?: Lesson[] }) => {
+        if (data.lessons && data.lessons.length > 0) setLessons(data.lessons);
+      })
+      .catch(() => {})
+      .finally(() => setLessonsLoading(false));
   }, [analysis.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // animate progress bar while stockfish is running — fills to 90% over estimated time,
@@ -462,27 +487,33 @@ export function GameReplay({
         {/* header: tab switcher (left) + action button (right) */}
         <div className="flex items-center justify-between gap-3 border-b pb-3">
           <div className="flex gap-1">
-            {(['moves', 'analysis'] as const).map((tab) => {
-              const issueCount =
+            {(['moves', 'analysis', 'lessons'] as const).map((tab) => {
+              const badge =
                 tab === 'analysis' && analysis.status === 'done'
                   ? analysis.result.turningPoints.length
-                  : 0;
+                  : tab === 'lessons' && lessons.length > 0
+                    ? lessons.length
+                    : 0;
               return (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
+                  disabled={tab === 'lessons' && analysis.status !== 'done'}
                   className={[
                     'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
                     activeTab === tab
                       ? 'bg-muted text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                    tab === 'lessons' && analysis.status !== 'done'
+                      ? 'opacity-40 cursor-not-allowed'
+                      : '',
                   ].join(' ')}
                 >
                   {tab}
-                  {issueCount > 0 ? (
+                  {badge > 0 ? (
                     <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-                      {issueCount}
+                      {badge}
                     </span>
                   ) : null}
                 </button>
@@ -564,6 +595,23 @@ export function GameReplay({
             onStartDrills={() => setDrillIndex(0)}
           />
         ) : null /* end analysis tab */}
+
+        {/* ── lessons tab ── */}
+        {activeTab === 'lessons' ? (
+          <div className="mt-4 space-y-2">
+            {lessonsLoading ? (
+              <div className="py-8 text-center text-sm text-muted-foreground animate-pulse">
+                generating lessons…
+              </div>
+            ) : lessons.length > 0 ? (
+              lessons.map((lesson, i) => <LessonCard key={i} lesson={lesson} />)
+            ) : (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                no lessons available — run analysis first
+              </div>
+            )}
+          </div>
+        ) : null /* end lessons tab */}
       </div>
     </div>
 

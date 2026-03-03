@@ -60,6 +60,21 @@ export type BlunderExplanation = {
   rule: string;
 };
 
+// ai-generated mini-lesson derived from a detected pattern
+export type Lesson = {
+  // matches Pattern.tag
+  patternTag: string;
+  title: string;
+  // 2-3 sentence overview of the chess concept
+  concept: string;
+  // 3 concrete principles to remember
+  keyPoints: string[];
+  // reference to specific moves from this game
+  gameReference: string;
+  // one actionable practice tip
+  practiceTip: string;
+};
+
 export type AnalysisSummary = {
   gameId: string;
   meta: {

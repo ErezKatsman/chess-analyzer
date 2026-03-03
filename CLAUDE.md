@@ -49,10 +49,32 @@
 - `POST /api/drills/attempt` — persists results in `DrillSession` mongoose model
 - entered from "practice N blunders" button in the analysis tab
 
+### lesson generator
+- `POST /api/lessons` — accepts patterns + turning points, calls claude haiku, returns structured lessons per pattern
+- cached in `GameAnalysis.lessons`; not regenerated on subsequent loads
+- `Lesson` type in `lib/interfaces/analysis.ts` — patternTag, title, concept, keyPoints[], gameReference, practiceTip
+- `components/LessonCard.tsx` — expandable card (tag chip, concept, 3 key points, game ref, practice tip)
+- shown in "lessons" tab of `GameReplay.tsx` right panel (tab disabled until analysis is done)
+
+### subscription / payments
+- `stripe` package installed; `UserProfile` schema has `plan: 'free'|'paid'`, `stripeCustomerId`, `stripeSubscriptionId`
+- `POST /api/stripe/checkout` — creates stripe checkout session, returns redirect URL
+- `POST /api/stripe/webhook` — handles `checkout.session.completed` (→ paid) and `customer.subscription.deleted` (→ free)
+- paid users bypass the monthly quota gate in `/api/analyze`
+- `PaywallModal` upgrade button calls checkout API and redirects; shows loading + error states
+- `app/upgrade/success/page.tsx` — post-payment landing page
+- **⚠ STRIPE NOT CONNECTED YET** — add these 4 env vars to `.env.local` to activate:
+  - `STRIPE_SECRET_KEY=sk_live_...`
+  - `STRIPE_WEBHOOK_SECRET=whsec_...` (from Stripe dashboard → Webhooks → your endpoint)
+  - `STRIPE_PRICE_ID=price_...` ($5/month recurring price ID)
+  - `NEXT_PUBLIC_APP_URL=https://yourdomain.com`
+  - register webhook endpoint in Stripe for: `checkout.session.completed`, `customer.subscription.deleted`
+  - for local testing: `stripe listen --forward-to localhost:3000/api/stripe/webhook`
+
 ### game replay UI
 - `GameReplay.tsx` — main client component for `/game`
   - left panel: `ChessBoard`, `EvalGraph`, nav controls, game selector dropdown
-  - right panel: two tabs — "moves" (`MovesList`) and "analysis" (`AnalysisPanel`)
+  - right panel: three tabs — "moves" (`MovesList`), "analysis" (`AnalysisPanel`), "lessons" (`LessonCard` list)
   - auto-switches to analysis tab on load (if pre-analyzed) or after fresh analysis
   - lazy state init (react 18 strict-mode-safe) from server-provided `initialAnalysis`
   - `router.refresh()` after fresh analysis so "✓ analyzed" badge updates on back-nav
@@ -63,11 +85,11 @@
 - `EvalGraph.tsx` — eval curve with blunder markers, clickable to seek board position
 
 ### mongodb schemas (`lib/db/schemas.ts`)
-- `GameAnalysis` — (clerkUserId, gameUuid) → full analysis + explanations
+- `GameAnalysis` — (clerkUserId, gameUuid) → full analysis + explanations + lessons
 - `UserQuota` — (clerkUserId, month) → usage count
 - `DrillSession` — drill attempt history
 - `CachedGames` — chess.com archive cache (TTL 1h)
-- `UserProfile` — clerk userId → chess.com username
+- `UserProfile` — clerk userId → chess.com username + plan ('free'|'paid') + stripe IDs
 
 ---
 
@@ -137,10 +159,8 @@ lib/
 
 ## next priorities (what to build next)
 
-1. **drill history page** (`/drills`) — past sessions, accuracy by theme, "retry weak spots"
-2. **lesson generator** — structured mini-lesson from detected patterns, stored in mongodb
-3. **subscription / payments** — stripe checkout for $5/month, enforce quota by plan tier
-4. **improved drill variety** — endgame technique, opening principle drills
+1. **connect stripe** — add the 4 env vars listed above; test with stripe CLI locally
+2. **improved drill variety** — endgame technique, opening principle drills
 
 ---
 

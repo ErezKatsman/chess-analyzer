@@ -16,6 +16,7 @@ export interface IGameAnalysis extends Document {
   turningPoints: object[];
   patterns: object[];
   explanations: object[];
+  lessons: object[];
   analyzedAt: Date;
 }
 
@@ -28,6 +29,7 @@ const GameAnalysisSchema = new Schema<IGameAnalysis>({
   turningPoints: { type: [Schema.Types.Mixed], default: [] },
   patterns: { type: [Schema.Types.Mixed], default: [] },
   explanations: { type: [Schema.Types.Mixed], default: [] },
+  lessons: { type: [Schema.Types.Mixed], default: [] },
   analyzedAt: { type: Date, default: Date.now },
 });
 
@@ -130,6 +132,10 @@ export const CachedGames =
 export interface IUserProfile extends Document {
   clerkUserId: string;
   chessUsername: string;
+  // subscription tier — 'paid' = unlimited analyses
+  plan: 'free' | 'paid';
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -137,6 +143,9 @@ export interface IUserProfile extends Document {
 const UserProfileSchema = new Schema<IUserProfile>({
   clerkUserId: { type: String, required: true, unique: true },
   chessUsername: { type: String, required: true },
+  plan: { type: String, enum: ['free', 'paid'], default: 'free' },
+  stripeCustomerId: { type: String },
+  stripeSubscriptionId: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

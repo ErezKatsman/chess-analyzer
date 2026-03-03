@@ -4,12 +4,39 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { FREE_LIMIT } from '@/lib/hooks/useAnalysisQuota';
 
+function useCheckout() {
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const startCheckout = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/stripe/checkout', { method: 'POST' });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setError(data.error ?? 'failed to start checkout');
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setError('network error — please try again');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { startCheckout, loading, error };
+}
+
 type Props = {
   open: boolean;
   onClose: () => void;
 };
 
 export function PaywallModal({ open, onClose }: Props) {
+  const { startCheckout, loading, error } = useCheckout();
+
   if (!open) return null;
 
   return (
@@ -59,12 +86,15 @@ export function PaywallModal({ open, onClose }: Props) {
           ))}
         </ul>
 
+        {error ? (
+          <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+
         <div className="flex flex-col gap-2">
-          {/* placeholder upgrade link — replace with real payment url */}
-          <Button asChild className="w-full">
-            <a href="#upgrade" onClick={onClose}>
-              upgrade for $5/month →
-            </a>
+          <Button className="w-full" onClick={startCheckout} disabled={loading}>
+            {loading ? 'redirecting to checkout…' : 'upgrade for $5/month →'}
           </Button>
           <Button variant="outline" className="w-full" onClick={onClose}>
             maybe later
