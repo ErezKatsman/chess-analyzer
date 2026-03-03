@@ -3,9 +3,6 @@
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useUser } from '@clerk/nextjs';
-
-
 import { ChessBoard } from '@/components/ChessBoard';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -27,11 +24,9 @@ const SCATTERED_PIECES = [
 
 export function Hero() {
   const router = useRouter();
-  const { isSignedIn } = useUser();
   const [userName, setUserName] = useState('');
   const [isClickable, setIsClickable] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const normalizedUserName = userName.trim();
@@ -113,41 +108,16 @@ export function Hero() {
                 />
 
                 <Button
-                  disabled={!isClickable || saving}
+                  disabled={!isClickable}
                   className="h-12 px-6 text-base bg-white text-slate-950 hover:bg-slate-100"
-                  onClick={async () => {
-                    if (!isClickable || saving) return;
-                    const name = userName.trim();
-
-                    // if signed in, persist the username so future visits auto-redirect
-                    if (isSignedIn) {
-                      setSaving(true);
-                      try {
-                        await fetch('/api/user/profile', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ chessUsername: name }),
-                        });
-                      } catch {
-                        // non-fatal — navigate anyway
-                      } finally {
-                        setSaving(false);
-                      }
-                    }
-
-                    router.push(`/user?userName=${encodeURIComponent(name)}`);
+                  onClick={() => {
+                    if (!isClickable) return;
+                    router.push(`/user?userName=${encodeURIComponent(userName.trim())}`);
                   }}
                 >
-                  {saving ? 'saving…' : 'Start'}
+                  Start
                 </Button>
               </div>
-
-              {/* nudge signed-out users to sign in for persistence */}
-              {!isSignedIn && isClickable && (
-                <p className="text-xs text-slate-500">
-                  <span className="text-slate-400">tip:</span> sign in to skip this step next time
-                </p>
-              )}
             </div>
           </motion.div>
 

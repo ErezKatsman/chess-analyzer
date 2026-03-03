@@ -13,21 +13,20 @@ type MonthPickerProps = {
   archives: ArchiveEntry[];
   selectedYear: number;
   selectedMonth: number; // 1-12
+  // '/' = home page (no userName in URL); '/user' = user page (default)
+  basePath?: string;
 };
 
-export function MonthPicker({ userName, archives, selectedYear, selectedMonth }: MonthPickerProps) {
+export function MonthPicker({ userName, archives, selectedYear, selectedMonth, basePath = '/user' }: MonthPickerProps) {
   const router = useRouter();
 
   const selectedValue = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const [year, month] = e.target.value.split('-').map(Number);
-    const params = new URLSearchParams({
-      userName,
-      year: String(year),
-      month: String(month),
-    });
-    router.push(`/user?${params.toString()}`);
+    const params = new URLSearchParams({ year: String(year), month: String(month) });
+    if (basePath !== '/') params.set('userName', userName);
+    router.push(`${basePath}?${params.toString()}`);
   }
 
   if (archives.length === 0) return null;

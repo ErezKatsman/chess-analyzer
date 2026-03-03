@@ -1,7 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 // routes that require a signed-in user
-const isProtectedRoute = createRouteMatcher(['/user(.*)', '/game(.*)', '/drills(.*)']);
+// /user is intentionally NOT protected — browse mode works without auth
+const isProtectedRoute = createRouteMatcher(['/game(.*)', '/drills(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {

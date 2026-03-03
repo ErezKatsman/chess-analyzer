@@ -26,15 +26,16 @@ real coach does. that's what this app does.
 
 ## monetization
 
-- **free**: 1 chess.com account, limited analyses per month, basic per-game stats
+- **free**: connect 1 chess.com account, 3 analyses per month, browse mode for any player
 - **paid ($5/month)**: full progress graph, cross-game weakness summary, unlimited analyses, personalized drill generation
 
 ---
 
 ## what is already built ✅
 
-- **auth** — clerk login, guards all routes
-- **chess.com connection** — user links their chess.com username, games are fetched automatically
+- **auth + routing** — Clerk login; `/` is smart: Hero (anon) / ConnectAccount (no profile) / Dashboard (has profile)
+- **browse mode** — Hero: type any chess.com username, browse their raw games without signing in
+- **chess.com connection** — ConnectAccount is the SOLE save point; Hero never saves
 - **stockfish analysis** — blunders (200cp), mistakes (100cp), inaccuracies (50cp), patterns detected
 - **AI explanations** — claude haiku explains each blunder in plain english + gives a rule
 - **lesson generator** — claude haiku generates structured mini-lessons per detected pattern
@@ -43,6 +44,40 @@ real coach does. that's what this app does.
 - **blunder animation** — clicking a blunder in the analysis tab plays the mistake move animated
 - **stripe payments** — code is done, just needs env vars connected (see below)
 - **drill history** — `/drills` page shows past drill sessions and accuracy
+- **progress graph** — recharts line chart: accuracy % + chess.com rating over time per analyzed game
+- **pattern summary** — ranked weakness list: "time-trouble 8×, endgame weakness 6×..." with coaching hints
+
+---
+
+## current user flows
+
+### anonymous (not signed in)
+```
+Hero → type chess.com username → validate → Start
+→ /user?userName=X → raw games list (no analysis, no analyze button)
+→ click Sign In in navbar → Clerk modal → FLOW: signed in
+```
+
+### signed in, no chess.com account linked
+```
+/ → ConnectAccount page
+→ type YOUR chess.com username → validate → link account
+→ router.refresh() → / → dashboard
+```
+
+### signed in, has chess.com account
+```
+/ → dashboard: your games + ✓ analyzed badges + progress tab + patterns
+→ analyze a game → /game?... → full replay with moves/analysis/lessons
+→ /drills → practice blunders from your analyzed games
+→ change username → delete profile → back to ConnectAccount
+```
+
+### upgrade flow
+```
+analyze 3 games (free limit) → PaywallModal → Stripe checkout
+→ /upgrade/success → plan = 'paid' → unlimited analyses
+```
 
 ---
 
@@ -67,43 +102,29 @@ for local testing: `stripe listen --forward-to localhost:3000/api/stripe/webhook
 
 ## roadmap — what to build next
 
-### 1. cross-game progress graph (highest priority)
-shows the user their accuracy improving over time — this is the ROI proof that converts free → paid.
+### 1. review + fix all user flows (highest priority)
+walk every flow end-to-end, find gaps, fix them before monetizing:
+- anonymous browse → sign in → connect account → dashboard
+- change username flow
+- quota hit → paywall → upgrade → paid dashboard
+- browse other player's games while signed in
 
-- line chart: x = game date, y = accuracy %
-- dots colored by result: green = win, red = loss, grey = draw
-- second overlay: chess.com rating over time (same chart or stacked)
-- show # games analyzed vs total games — sparse graph = paywall teaser ("analyze more games to see your full curve")
-- accuracy formula: `100 - (avgCentipawnLoss / 10)` capped at 100
+### 2. connect stripe
+activate payments with env vars + test with stripe CLI
 
-needs:
-- `GET /api/user/progress` — reads all `GameAnalysis` docs for user, computes per-game stats
-- `ProgressChart` component on the `/user` page (recharts library)
-
-### 2. cross-game pattern summary
-"in your last 20 games: time-trouble 8x, endgame weakness 6x, opening mistakes 4x"
-
-this becomes the personalized improvement roadmap. nobody else does this.
-
-needs:
-- `GET /api/user/patterns` — aggregates pattern tags across all `GameAnalysis` docs
-- ranked weakness list shown on `/user` page
-- "your #1 weakness: endgame technique — here are drills to fix it" CTA
-
-### 3. chess.com training history (future)
-- chess.com has puzzle/lesson data in their API
-- fetch and store user's puzzle activity over time
-- show timeline: "you did 40 puzzles this week"
-
-### 4. generated drills from recurring weaknesses (future)
+### 2. generated drills from recurring weaknesses
 - today: drills come from blunders in a single analyzed game
 - future: generate drill positions targeting your cross-game patterns
 - "you always lose rook endgames — here are 5 rook endgame positions to practice"
 - `POST /api/drills/generate` — takes weakness tag, generates drill positions
 
-### 5. weekly coaching digest (future)
+### 3. weekly coaching digest
 - email or in-app notification
 - "this week: 3 games analyzed, your accuracy improved 4%. your #1 pattern: time-trouble. recommended drill: →"
+
+### 4. chess.com training history (future)
+- fetch user's puzzle/lesson activity from chess.com API
+- show timeline: "you did 40 puzzles this week"
 
 ---
 

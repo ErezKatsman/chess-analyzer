@@ -23,9 +23,11 @@ type GamesTableProps = {
   archiveYear: number;
   archiveMonth: number; // 1-12
   analyzedUuids?: Set<string>;
+  // false = public browse mode — no analyze button, just chess.com link
+  isOwner?: boolean;
 };
 
-export function GamesTable({ userName, games, archiveYear, archiveMonth, analyzedUuids }: GamesTableProps) {
+export function GamesTable({ userName, games, archiveYear, archiveMonth, analyzedUuids, isOwner = false }: GamesTableProps) {
   const sortedGames = [...games].sort((a, b) => b.endTime - a.endTime);
 
   return (
@@ -158,23 +160,36 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth, analyze
 
                   <TableCell className="text-right">
                     <div className="flex flex-col items-end gap-1">
-                      {isAnalyzed && (
-                        <span className="text-[10px] font-semibold text-emerald-500">
-                          ✓ analyzed
-                        </span>
+                      {isOwner ? (
+                        <>
+                          {isAnalyzed && (
+                            <span className="text-[10px] font-semibold text-emerald-500">
+                              ✓ analyzed
+                            </span>
+                          )}
+                          <Link
+                            href={analyzeHref}
+                            className={[
+                              'inline-flex items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors',
+                              isAnalyzed
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400'
+                                : 'hover:bg-muted/50',
+                            ].join(' ')}
+                            aria-label={`${isAnalyzed ? 'view analysis' : 'analyze'} game vs ${opponentName}`}
+                          >
+                            {isAnalyzed ? 'view analysis' : 'analyze'}
+                          </Link>
+                        </>
+                      ) : (
+                        <Link
+                          href={game.url}
+                          target="_blank"
+                          className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-muted/50"
+                          aria-label={`view game vs ${opponentName} on chess.com`}
+                        >
+                          view on chess.com
+                        </Link>
                       )}
-                      <Link
-                        href={analyzeHref}
-                        className={[
-                          'inline-flex items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors',
-                          isAnalyzed
-                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400'
-                            : 'hover:bg-muted/50',
-                        ].join(' ')}
-                        aria-label={`${isAnalyzed ? 'view analysis' : 'analyze'} game vs ${opponentName}`}
-                      >
-                        {isAnalyzed ? 'view analysis' : 'analyze'}
-                      </Link>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -184,9 +199,11 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth, analyze
         </Table>
       </div>
 
-      <div className="p-4 border-t text-xs text-muted-foreground">
-        next step: open a game → we’ll add move grading + best-move suggestions
-      </div>
+      {!isOwner && (
+        <div className="p-4 border-t text-xs text-muted-foreground">
+          sign in and connect your chess.com account to analyze games and track your progress
+        </div>
+      )}
     </section>
   );
 }

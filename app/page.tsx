@@ -1,12 +1,27 @@
-import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { connectDB } from '@/lib/db/mongo';
 import { UserProfile } from '@/lib/db/schemas';
 import { Hero } from '@/components/Hero';
+import { ConnectAccount } from '@/components/ConnectAccount';
+import { UserPageContent } from '@/components/UserPageContent';
 
-// if the signed-in user already has a saved chess.com username,
-// skip the hero page and land directly on their games.
-export default async function Home() {
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
+interface HomeProps {
+  searchParams: {
+    year?: string;
+    month?: string;
+  };
+}
+
+function parseIntParam(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+export default async function Home({ searchParams }: HomeProps) {
   const { userId } = await auth();
 
   if (userId) {
@@ -14,10 +29,19 @@ export default async function Home() {
       await connectDB();
       const profile = await UserProfile.findOne({ clerkUserId: userId }).lean();
       if (profile?.chessUsername) {
-        redirect(`/user?userName=${encodeURIComponent(profile.chessUsername)}`);
+        return (
+          <UserPageContent
+            userName={profile.chessUsername}
+            year={parseIntParam(searchParams.year)}
+            month={parseIntParam(searchParams.month)}
+            basePath="/"
+          />
+        );
       }
+      // signed in but no chess.com account linked yet
+      return <ConnectAccount />;
     } catch {
-      // db unavailable — fall through to the hero page gracefully
+      // db unavailable — fall through to hero for graceful degradation
     }
   }
 

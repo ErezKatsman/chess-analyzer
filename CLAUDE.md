@@ -3,18 +3,49 @@
 ## product goal
 **chess improvement platform** — show players their weaknesses across ALL games, prove they're improving, give personalized drills. not just per-game analysis.
 
-- connect chess.com account → analyze games with stockfish + claude haiku
-- cross-game pattern summary → personalized improvement roadmap
-- progress graph: accuracy + rating over time → prove ROI
-- drills from the user's own recurring blunders
-
 ---
 
-## business context
-- **not**: "cheaper chess.com analysis" (lichess is free — this loses)
-- **yes**: "chess coach that knows your specific weaknesses across all your games"
-- **gate**: free = limited analyses; paid ($5/mo) = full progress graph, cross-game summary, unlimited
-- **test every feature**: does it show improvement or trigger an "aha" moment? if not, skip it.
+## user flows (source of truth)
+
+```
+FLOW 1 — anonymous browse (not signed in)
+  / (Hero) → type username → validate → Start
+  → /user?userName=X
+  → raw games list, NO analysis, NO analyze buttons
+  → chess.com links in table for reference
+
+FLOW 2 — sign in (no profile yet)
+  navbar Sign In → Clerk modal
+  → auth → app/page.tsx:
+      has profile  → dashboard (/)
+      no profile   → ConnectAccount (/)
+
+FLOW 3 — connect chess.com account
+  ConnectAccount → type username → validate → POST /api/user/profile
+  → router.push('/') + router.refresh() → dashboard
+
+FLOW 4 — personal dashboard (signed in + has profile)
+  / → UserPageContent basePath="/"
+  → own games + ✓ analyzed badges + progress tab + patterns
+  → click Analyze → /game?... → GameReplay full analysis
+  → drill practice at /drills
+
+FLOW 5 — change username
+  dashboard → ChangeUsernameButton → DELETE /api/user/profile
+  → router.push('/') → ConnectAccount (FLOW 3)
+
+FLOW 6 — quota / paywall
+  Analyze → quota hit (3/mo free) → PaywallModal → Stripe checkout
+  → /upgrade/success → plan='paid' → unlimited
+```
+
+### routing rules
+| path | protected? | who sees it |
+|---|---|---|
+| `/` | no | Hero (anon) · ConnectAccount (signed in, no profile) · Dashboard (signed in + profile) |
+| `/user?userName=X` | no | raw browse for anyone — no personal data |
+| `/game?...` | yes | signed-in users — analyze + replay |
+| `/drills` | yes | signed-in users |
 
 ---
 
@@ -22,7 +53,7 @@
 
 | area | status | key files |
 |---|---|---|
-| auth + quota | ✅ | `middleware.ts`, `UserQuota` schema, `PaywallModal` |
+| auth + quota | ✅ | `middleware.ts`, `UserQuota`, `PaywallModal` |
 | chess.com fetch | ✅ | `lib/services/chesscom.ts`, `lib/db/cachedChesscom.ts` |
 | stockfish pipeline | ✅ | `lib/analysis/stockfish.ts`, `insights.ts`, `patterns.ts` |
 | ai explanations | ✅ | `app/api/explain/route.ts`, cached in `GameAnalysis` |
@@ -32,16 +63,23 @@
 | animated board | ✅ | `ChessBoard.tsx` (framer-motion FLIP + set-diff reconcile) |
 | game replay UI | ✅ | `GameReplay.tsx` — 3 tabs: moves / analysis / lessons |
 | games table | ✅ | `GamesTable.tsx`, `StatsBar.tsx`, `EvalGraph.tsx` |
+| progress graph | ✅ | `ProgressChart.tsx`, `lib/analysis/progressUtils.ts` |
+| pattern summary | ✅ | `PatternSummary.tsx`, `lib/analysis/patternSummary.ts` |
+| browse mode | ✅ | Hero → `/user?userName=X` (no auth, no personal data) |
+| connect account | ✅ | `ConnectAccount.tsx` — sole place that saves chess.com username |
 
-### stripe — needs 4 env vars to activate (see NOTES.md)
+### stripe — needs 4 env vars (see NOTES.md)
 
 ---
 
 ## next priorities
-1. **cross-game progress graph** — accuracy % + chess.com rating over time on `/user` page
-2. **cross-game pattern summary** — "endgame weakness 6x in last 20 games" ranked list
-3. **connect stripe** — add env vars, test with stripe CLI
-4. **generated drills from recurring weaknesses** — not just per-game blunders
+1. **review + fix all user flows** — walk through every flow end-to-end, find gaps, fix them
+   - anonymous browse → sign in → connect account → dashboard
+   - change username flow
+   - quota hit → paywall → upgrade → paid dashboard
+   - browse other player's games while signed in
+2. **connect stripe** — add env vars, test with stripe CLI
+3. **generated drills from recurring weaknesses** — cross-game blunders, not per-game
 
 ---
 
@@ -65,27 +103,32 @@ app/
     stripe/checkout/route.ts  POST — create stripe checkout session
     stripe/webhook/route.ts   POST — handle stripe events
     user/quota/route.ts       GET  — live quota
-    user/profile/route.ts     GET/POST — chess.com username linking
+    user/profile/route.ts     GET/POST/DELETE — chess.com username linking
   game/page.tsx               server component: loads game + cached analysis
-  user/page.tsx               server component: games list
+  user/page.tsx               thin wrapper: public browse (no auth required)
   drills/page.tsx             drill history
   upgrade/success/page.tsx    post-payment landing
 
 components/
+  UserPageContent.tsx         shared server component — dashboard (basePath='/') or browse ('/user')
+  UserPageTabs.tsx            client: games tab + progress tab
+  ConnectAccount.tsx          client: sole save point for chess.com username linking
+  ChangeUsernameButton.tsx    client: DELETE profile → back to ConnectAccount
+  Hero.tsx                    browse-only landing (no auth, no saving)
+  ProgressChart.tsx / PatternSummary.tsx
   game-replay/                MovesList, AnalysisPanel, types, utils
   drill-panel/                useDrillState, types
-  chess-board/utils.ts        Square/Piece types, parseFenPieces
   ChessBoard.tsx              animated board (framer-motion)
   DrillPanel.tsx / EvalGraph.tsx / GameReplay.tsx / GamesTable.tsx
   LessonCard.tsx / PaywallModal.tsx / StatsBar.tsx
 
 lib/
-  analysis/                   stockfish.ts, insights.ts, patterns.ts
+  analysis/                   stockfish.ts, insights.ts, patterns.ts, progressUtils.ts, patternSummary.ts
   chess/                      moves.ts, pgn.ts
   db/                         mongo.ts, schemas.ts, cachedChesscom.ts, gamesCache.ts
   hooks/useAnalysisQuota.ts
-  interfaces/                 analysis.ts (TurningPoint, Pattern, Lesson…), games.ts (IGame…)
-  mappers/chesscom.ts / services/chesscom.ts / userUtils.ts
+  interfaces/                 analysis.ts, games.ts
+  mappers/chesscom.ts / services/chesscom.ts / userUtils.ts / utils/game.ts
 ```
 
 ---
@@ -129,4 +172,8 @@ if (quota.count >= FREE_LIMIT) return 402;
 
 // Map iteration — use .forEach() not for...of (TS target doesn't support downlevel iteration)
 map.forEach((value, key) => { ... });
+
+// browse vs dashboard separation:
+// UserPageContent: basePath='/' = dashboard (loads analysis), basePath='/user' = browse (no personal data)
+// middleware: /user NOT protected, /game and /drills are protected
 ```

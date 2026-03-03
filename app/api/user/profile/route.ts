@@ -46,3 +46,16 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ chessUsername: chessUsername.trim() });
 }
+
+// DELETE /api/user/profile — clear saved chess.com username so the user can re-enter it
+export async function DELETE() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
+  await connectDB();
+  await UserProfile.deleteOne({ clerkUserId: userId });
+
+  return NextResponse.json({ ok: true });
+}
