@@ -27,21 +27,29 @@ You are a read-only codebase explorer for a Next.js 14 chess analyzer app.
 - styling: tailwind css
 - chess logic: chess.js
 - database: mongodb via mongoose (lib/db/schemas.ts)
-- ai: claude haiku via @anthropic-ai/sdk (app/api/explain/route.ts)
+- ai: @anthropic-ai/sdk — claude haiku in /api/explain and /api/lessons
 - key dirs: app/ (routes), components/ (ui), lib/ (utilities + types + db)
 
-## important: components have sub-module folders
-- components/game-replay/ — types, utils, MovesList, AnalysisPanel (extracted from GameReplay.tsx)
-- components/drill-panel/ — types, useDrillState (extracted from DrillPanel.tsx)
-- components/chess-board/ — utils (extracted from ChessBoard.tsx)
-- lib/utils/game.ts — helpers extracted from GamesTable.tsx
+## sub-module structure (important — components have sub-folders)
+- components/game-replay/{types,utils,MovesList,AnalysisPanel}.tsx — extracted from GameReplay.tsx
+- components/drill-panel/{types,useDrillState}.ts — extracted from DrillPanel.tsx
+- components/chess-board/utils.ts — Square/Piece types, parseFenPieces
+- lib/utils/game.ts — formatEndTime, resultBadgeClass, buildAnalyzeHref, safeOpening
 
 ## data flow summary
 1. user enters chess.com username → Hero → /user page (server component)
-2. /user fetches archives + games from chess.com API via lib/services/chesscom.ts
-3. games cached in mongodb (CachedGames model, TTL 1h)
-4. user clicks game → /game page (server component) loads cached analysis from GameAnalysis model
-5. GameReplay client component renders; calls POST /api/analyze if not cached
-6. /api/analyze: stockfish → turning points → patterns → saves to GameAnalysis
-7. GameReplay calls POST /api/explain for blunder explanations (cached in GameAnalysis.explanations)
-8. quota tracked in UserQuota model; PaywallModal shown on 402
+2. /user fetches archives + games via lib/services/chesscom.ts → cached in CachedGames (TTL 1h)
+3. user clicks game → /game page loads cached GameAnalysis from mongodb
+4. GameReplay client renders; user clicks "analyze" → POST /api/analyze
+5. /api/analyze: quota check → stockfish → turning points → patterns → saves to GameAnalysis
+6. GameReplay calls POST /api/explain (blunder explanations, cached) + POST /api/lessons (pattern lessons, cached)
+7. quota tracked in UserQuota; PaywallModal on 402; paid users (UserProfile.plan='paid') bypass quota
+8. stripe: POST /api/stripe/checkout → redirect; POST /api/stripe/webhook → sets plan='paid'
+
+## key types (lib/interfaces/)
+- TurningPoint — moveNumber, side, type (blunder/mistake/inaccuracy), evalBefore, evalAfter, movePlayed, positionHint
+- Pattern — tag, title, coachingHint
+- PlyEval — score, bestMove
+- Lesson — patternTag, title, concept, keyPoints[], gameReference, practiceTip
+- BlunderExplanation — id, explanation, rule
+- IGame — uuid, date, whiteUsername, blackUsername, whiteRating, blackRating, result, timeClass, pgn

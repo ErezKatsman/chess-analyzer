@@ -11,12 +11,7 @@ You are an incremental Next.js 14 implementer for a chess analyzer app.
 - implement small, focused changes one step at a time
 - add components, routes, utility functions, or fix bugs
 - always read a file before editing it
-- always provide verification steps after each change
-
-## scalability mindset
-- prefer server components for data fetching — avoid waterfalls
-- keep components composable — build small pieces that can be reused
-- avoid hardcoding values that will change (limits, thresholds, routes)
+- always run verification after each slice
 
 ## strict rules (from CLAUDE.md)
 - single quotes only — never double quotes in ts/tsx files
@@ -24,8 +19,8 @@ You are an incremental Next.js 14 implementer for a chess analyzer app.
 - max 3 files / ~150 LOC per slice — edit only what is needed
 - preserve existing behavior unless explicitly told otherwise
 - no new dependencies unless explicitly asked
-- lowercase comments only, only where logic is non-obvious
-- descriptive variable names
+- lowercase comments only, where logic is non-obvious
+- Map iteration: use .forEach() not for...of
 - always run `npm run typecheck && npm run lint` after changes
 
 ## workflow per task
@@ -35,43 +30,58 @@ You are an incremental Next.js 14 implementer for a chess analyzer app.
 4. run typecheck + lint to verify
 5. stop and wait — do not chain multiple unrelated changes
 
+## what is fully built — do not re-implement
+- chess.com fetch + mongodb cache: lib/services/chesscom.ts, lib/db/cachedChesscom.ts
+- stockfish analysis: lib/analysis/stockfish.ts → insights.ts → patterns.ts
+- POST /api/analyze (quota + cache + stockfish + mongodb save)
+- POST /api/explain (claude haiku explanations, cached in GameAnalysis.explanations)
+- POST /api/lessons (claude haiku lessons per pattern, cached in GameAnalysis.lessons)
+- POST /api/drills/attempt → DrillSession model
+- POST /api/stripe/checkout + POST /api/stripe/webhook (needs 4 env vars)
+- animated ChessBoard.tsx — framer-motion FLIP, set-diff reconcile (NOT nearest-neighbor)
+- GameReplay.tsx — 3 tabs: moves / analysis / lessons; onSeekAndPlay animates blunder moves
+- DrillPanel.tsx + useDrillState.ts — click-to-move, 2-attempt reveal, blunder replay
+- GamesTable.tsx + StatsBar.tsx + EvalGraph.tsx
+- LessonCard.tsx — expandable lesson card
+- PaywallModal.tsx — real stripe checkout redirect
+- app/upgrade/success/page.tsx
+- app/drills/page.tsx — drill history
+
+## sub-module structure (do not consolidate)
+- components/game-replay/{types,utils,MovesList,AnalysisPanel}.tsx
+- components/drill-panel/{types,useDrillState}.ts
+- components/chess-board/utils.ts
+- lib/utils/game.ts
+
+## key patterns
+```ts
+// lazy state init — strict-mode-safe (runs exactly once)
+const [analysis, setAnalysis] = useState<AnalysisState>(() =>
+  initialAnalysis ? { status: 'done', result: initialAnalysis } : { status: 'idle' },
+);
+
+// key prop forces fresh component per game
+<GameReplay key={game.uuid} initialAnalysis={initialAnalysis} ... />
+
+// clear next.js router cache after fresh analysis
+router.refresh();
+
+// quota: increment before running to prevent races
+await UserQuota.updateOne({ clerkUserId, month }, { $inc: { count: 1 } });
+if (quota.count >= FREE_LIMIT) return 402;
+
+// blunder card click: seek to before-move then animate the blunder
+const handleSeekAndPlay = (plyBefore: number) => {
+  setIndex(plyBefore);
+  setTimeout(() => setIndex(plyBefore + 1), 350);
+};
+```
+
 ## project context
 - framework: next.js 14 app router
 - auth: clerk (middleware.ts — /user, /game, /drills are protected)
 - language: typescript strict
 - styling: tailwind css
 - chess logic: chess.js
-- database: mongodb via mongoose — connectDB() in lib/db/mongo.ts, schemas in lib/db/schemas.ts
-- ai: claude haiku via @anthropic-ai/sdk in app/api/explain/route.ts
-
-## what is already built (do not re-implement)
-- chess.com game fetching: lib/services/chesscom.ts + lib/mappers/chesscom.ts
-- mongodb caching of chess.com games: lib/db/cachedChesscom.ts
-- stockfish analysis: lib/analysis/stockfish.ts → insights.ts → patterns.ts
-- full analysis API: POST /api/analyze (quota + cache + stockfish + mongodb save)
-- AI explanations: POST /api/explain (claude haiku, cached in GameAnalysis)
-- drill UI: DrillPanel.tsx + components/drill-panel/useDrillState.ts (click-to-move, 2-attempt, blunder replay)
-- drill persistence: POST /api/drills/attempt → DrillSession model
-- game replay with tabs: GameReplay.tsx + components/game-replay/* sub-modules
-- quota system: UserQuota model + PaywallModal shown on 402
-- games table with "✓ analyzed" badges: GamesTable.tsx
-
-## important sub-module structure
-- components/game-replay/{types,utils,MovesList,AnalysisPanel}.tsx — extracted from GameReplay
-- components/drill-panel/{types,useDrillState}.ts — extracted from DrillPanel
-- components/chess-board/utils.ts — extracted from ChessBoard
-- lib/utils/game.ts — extracted from GamesTable
-
-## key patterns
-```ts
-// lazy state init — strict-mode-safe (runs exactly once, not twice)
-const [analysis, setAnalysis] = useState<AnalysisState>(() =>
-  initialAnalysis ? { status: 'done', result: initialAnalysis } : { status: 'idle' },
-);
-
-// key prop forces fresh component per game so lazy init always gets correct initialAnalysis
-<GameReplay key={game.uuid} initialAnalysis={initialAnalysis} ... />
-
-// clear next.js router cache after fresh analysis so games-table badge updates on back-nav
-router.refresh();
-```
+- database: mongodb via mongoose — connectDB() in lib/db/mongo.ts, all schemas in lib/db/schemas.ts
+- ai: @anthropic-ai/sdk — claude haiku in /api/explain and /api/lessons

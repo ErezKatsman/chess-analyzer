@@ -1,58 +1,43 @@
 ---
 name: summarize-period
-description: Summarize a user's chess games over a time period (e.g. last week, last month). Aggregates patterns across multiple GameInsight[] results. Use this when the user wants a progress report or recurring weakness analysis.
+description: Plan and build the cross-game progress summary feature. Shows the user their patterns and weaknesses aggregated across all analyzed games. This is the highest-priority next feature — it's what converts free users to paid.
 ---
 
 ## summarize-period skill
 
-Aggregate insights across multiple games into a concise progress report.
+Build the cross-game pattern aggregation and progress summary on the /user page.
 
-### input
+### what this feature is
+- aggregate all `GameAnalysis` docs for a user → find recurring patterns
+- show: "in your last 20 games — time-trouble: 8x, endgame weakness: 6x, opening mistakes: 4x"
+- this is the personalized improvement roadmap. chess.com and lichess do not do this.
 
-- time range: e.g. "last 7 days", "january 2026", "last 20 games"
-- source: chess.com username (already available from app state)
-- optionally: pre-analyzed `GameInsight[]` if already fetched
+### what needs to be built
 
-### steps
+**slice 1 — API**
+- `GET /api/user/patterns` — query all `GameAnalysis` docs for the current user
+- count occurrences of each pattern tag across all games
+- return: `{ tag, count, title, coachingHint }[]` sorted by count descending
+- also return: total games analyzed, total games available
 
-1. **fetch the games**
-   - only use codebase-explorer if the fetch entrypoint path is unknown
-   - otherwise call the existing fetch flow directly
-   - cap work per slice: analyze at most 5 games per slice, then stop with a progress summary
+**slice 2 — UI**
+- add `WeaknessPanel` component to `/user` page (below StatsBar, above GamesTable)
+- show ranked weakness list: tag chip + count + coaching hint
+- show "X of Y games analyzed" — sparse = paywall teaser
+- show CTA: "practice your #1 weakness → [drills button]"
 
-2. **analyze each game**
-   - invoke analyze-game logic per game (batch, not interactive)
-   - collect all `GameInsight[]` into a flat list
+**slice 3 — progress graph**
+- `GET /api/user/progress` — per analyzed game: date, accuracy %, blunder count, result, rating
+- accuracy formula: `100 - (avgCentipawnLoss / 10)` capped at 100 (use evals[] from GameAnalysis)
+- rating: from IGame.whiteRating or blackRating depending on which side user played
+- `ProgressChart` component: recharts line chart, x=date y=accuracy, dots colored by result
 
-3. **aggregate patterns**
-   - count insight types: blunder, missed tactic, positional error, good move
-   - find the top 3 recurring weaknesses (most frequent patterns)
-   - find the top 1 strength (most frequent positive pattern)
-   - track win/draw/loss ratio over the period
+### before starting — clarify with user
+- should this be free or paid-only?
+- should the progress graph and weakness panel be on the same page or separate tabs?
+- should unanalyzed games show as gaps in the graph or be excluded entirely?
 
-4. **build the summary**
-   - use the format below
-   - keep it scannable — bullets, not paragraphs
-   - do not list every game, only patterns and totals
-
-5. **recommend next steps**
-   - suggest which skill to use next: generate-lesson for the top weakness
-   - one actionable drill recommendation based on the pattern
-
-### output format
-
-```
-Period: [date range] — [N] games analyzed
-Record: [W] wins / [D] draws / [L] losses
-
-Top weaknesses:
-1. [pattern] — occurred in [N] games ([%])
-2. [pattern] — occurred in [N] games ([%])
-3. [pattern] — occurred in [N] games ([%])
-
-Top strength:
-- [pattern] — occurred in [N] games ([%])
-
-Recommended focus:
-[one paragraph — which lesson to study and why]
-```
+### data available (no new schema needed)
+- `GameAnalysis` model has: patterns[], evals[], turningPoints[], clerkUserId, gameUuid
+- `IGame` has: date, whiteRating, blackRating, result, whiteUsername, blackUsername
+- `CachedGames` links gameUuid → full game data
