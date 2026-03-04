@@ -1,12 +1,10 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChessBoard } from '@/components/ChessBoard';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { checkAndSetUserExist } from '@/lib/userUtils';
+import { OnboardingModal } from './OnboardingModal';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -23,26 +21,7 @@ const SCATTERED_PIECES = [
 ] as const;
 
 export function Hero() {
-  const router = useRouter();
-  const [userName, setUserName] = useState('');
-  const [isClickable, setIsClickable] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const normalizedUserName = userName.trim();
-
-    if (!normalizedUserName) {
-      setIsClickable(false);
-      setError(null);
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      checkAndSetUserExist(setIsClickable, setError, normalizedUserName);
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [userName]);
+  const [showModal, setShowModal] = useState(false);
 
   return (
     <section className="relative min-h-screen bg-slate-950 flex items-center overflow-hidden">
@@ -73,14 +52,14 @@ export function Hero() {
                 Be a better<br />chess player
               </h1>
               <p className="text-lg text-slate-400 sm:text-xl">
-                Analyze all your chess.com games for free.
-                Engine-first insights, lessons, and drills.
+                Your personal AI coach — analyzes every game, finds your patterns,
+                and builds a plan to get you to your next rating milestone.
               </p>
             </div>
 
-            {/* feature chips — quick value-prop scan */}
+            {/* feature chips */}
             <div className="flex flex-wrap gap-2">
-              {['engine analysis', 'AI explanations', 'practice drills'].map((f) => (
+              {['engine analysis', 'AI coaching', 'progress tracking'].map((f) => (
                 <span
                   key={f}
                   className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-slate-400"
@@ -90,35 +69,20 @@ export function Hero() {
               ))}
             </div>
 
-            <div className="flex flex-col gap-3">
-              {error && (
-                <p className="text-sm font-medium text-red-400">{error}</p>
-              )}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-fit"
+            >
+              <Button
+                onClick={() => setShowModal(true)}
+                className="h-14 px-8 text-lg bg-white text-slate-950 hover:bg-slate-100 font-semibold rounded-xl shadow-lg shadow-white/10"
+              >
+                Analyze My Games →
+              </Button>
+            </motion.div>
 
-              <div className="flex gap-3 items-center">
-                <Input
-                  className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus-visible:ring-slate-500 h-12 text-base"
-                  placeholder="chess.com username"
-                  value={userName}
-                  onChange={(e) => {
-                    setIsClickable(false);
-                    setError(null);
-                    setUserName(e.target.value);
-                  }}
-                />
-
-                <Button
-                  disabled={!isClickable}
-                  className="h-12 px-6 text-base bg-white text-slate-950 hover:bg-slate-100"
-                  onClick={() => {
-                    if (!isClickable) return;
-                    router.push(`/user?userName=${encodeURIComponent(userName.trim())}`);
-                  }}
-                >
-                  Start
-                </Button>
-              </div>
-            </div>
+            <p className="text-xs text-slate-500">Free to start · 3 analyses/month on the free plan</p>
           </motion.div>
 
           {/* right — chess board, desktop only */}
@@ -135,6 +99,11 @@ export function Hero() {
 
         </div>
       </div>
+
+      {/* onboarding modal */}
+      <AnimatePresence>
+        {showModal && <OnboardingModal onClose={() => setShowModal(false)} />}
+      </AnimatePresence>
     </section>
   );
 }

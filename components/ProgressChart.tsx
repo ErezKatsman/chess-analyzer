@@ -9,11 +9,13 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Dot,
+  ReferenceLine,
 } from 'recharts';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 
 interface Props {
   data: ProgressPoint[];
+  drillMarkers?: number[]; // unix timestamps (day-level) when user practiced drills
 }
 
 const RESULT_COLOR: Record<string, string> = {
@@ -64,7 +66,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payl
   );
 }
 
-export function ProgressChart({ data }: Props) {
+export function ProgressChart({ data, drillMarkers = [] }: Props) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
@@ -108,6 +110,18 @@ export function ProgressChart({ data }: Props) {
             width={44}
           />
         )}
+        {/* drill practice markers — amber dashed vertical lines */}
+        {drillMarkers.map(dayTs => (
+          <ReferenceLine
+            key={dayTs}
+            x={dayTs}
+            yAxisId="acc"
+            stroke="#f59e0b"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            label={{ value: '⚡', position: 'insideTopLeft', fontSize: 10, fill: '#f59e0b' }}
+          />
+        ))}
         <Tooltip content={<CustomTooltip />} />
         <Line
           yAxisId="acc"

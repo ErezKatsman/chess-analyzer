@@ -6,7 +6,7 @@ import type { IGame } from '@/lib/interfaces/games';
 import { fetchUserArchives } from '@/lib/services/chesscom';
 import { fetchMonthlyGamesCached, fetchLatestMonthlyGamesCached } from '@/lib/db/cachedChesscom';
 import { connectDB } from '@/lib/db/mongo';
-import { GameAnalysis } from '@/lib/db/schemas';
+import { GameAnalysis, DrillSession } from '@/lib/db/schemas';
 import { MonthPicker } from '@/components/MonthPicker';
 import { UserPageTabs } from '@/components/UserPageTabs';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
@@ -23,9 +23,11 @@ interface Props {
   month: number | null;
   // '/' = home (month picker stays at /); '/user' = public browse page
   basePath?: string;
+  // active dashboard tab (coach | progress | games | profile | settings)
+  tab?: string;
 }
 
-export async function UserPageContent({ userName, year, month, basePath = '/user' }: Props) {
+export async function UserPageContent({ userName, year, month, basePath = '/user', tab = 'coach' }: Props) {
   const { userId } = await auth();
 
   const hasExplicitMonth = year !== null && month !== null;
@@ -65,15 +67,22 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
   let analyzedUuids = new Set<string>();
   let progressPoints: ProgressPoint[] = [];
   let patternEntries: PatternSummaryEntry[] = [];
+  let drillMarkers: number[] = []; // unix timestamps (day-level) when user practiced drills
 
   // only load personal analysis on the home dashboard, not on public browse pages
   if (userId && basePath === '/') {
     try {
       await connectDB();
-      const allAnalyzed = await GameAnalysis.find(
-        { clerkUserId: userId },
-        { gameUuid: 1, pgn: 1, playerSide: 1, evals: 1, turningPoints: 1, patterns: 1 },
-      ).lean();
+      const [allAnalyzed, drillDocs] = await Promise.all([
+        GameAnalysis.find(
+          { clerkUserId: userId },
+          { gameUuid: 1, pgn: 1, playerSide: 1, evals: 1, turningPoints: 1, patterns: 1 },
+        ).lean(),
+        DrillSession.find(
+          { clerkUserId: userId, solved: true },
+          { createdAt: 1 },
+        ).lean(),
+      ]);
 
       analyzedUuids = new Set(allAnalyzed.map((a) => a.gameUuid as string));
 
@@ -92,6 +101,16 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
       patternEntries = aggregatePatterns(
         allAnalyzed.map((a) => (a.patterns ?? []) as Pattern[]),
       );
+
+      // group drill sessions by day — one marker per day practiced
+      const seenDays = new Set<number>();
+      drillDocs.forEach((d) => {
+        if (d.createdAt) {
+          const dayTs = Math.floor(new Date(d.createdAt as Date).getTime() / 1000 / 86400) * 86400;
+          seenDays.add(dayTs);
+        }
+      });
+      seenDays.forEach((day) => drillMarkers.push(day));
     } catch {
       // non-fatal
     }
@@ -135,11 +154,13 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
           userName={userName}
           archiveYear={archiveYear}
           archiveMonth={archiveMonth}
-          analyzedUuidsList={[...analyzedUuids]}
+          analyzedUuidsList={Array.from(analyzedUuids)}
           errorMessage={errorMessage}
           progressPoints={progressPoints}
           patternEntries={patternEntries}
+          drillMarkers={drillMarkers}
           isOwner={Boolean(userId && basePath === '/')}
+          activeTab={basePath === '/' ? tab : 'games'}
         />
       </div>
     </main>
