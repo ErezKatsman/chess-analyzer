@@ -47,7 +47,8 @@ You are a read-only codebase explorer for a Next.js 14 chess analyzer app.
 8. stripe: POST /api/stripe/checkout → redirect; POST /api/stripe/webhook → sets plan='paid'
 
 ## key types (lib/interfaces/)
-- TurningPoint — moveNumber, side, type (blunder/mistake/inaccuracy/missed_win/good_defense), evalBefore, evalAfter, movePlayed (UCI), bestMove (UCI — TODO Slice 2), positionHint (FEN), oneLineReason
+- TurningPoint — moveNumber, side, type (blunder/mistake/inaccuracy/missed_win/good_defense), evalBefore, evalAfter, movePlayed (UCI), positionHint (FEN), oneLineReason
+  - *TODO Slice 2:* bestMove (UCI) — not yet in schema or produced by the pipeline
 - Pattern — tag, title, coachingHint, evidenceMoves[]
 - PlyEval — score, bestMove
 - Lesson — patternTag, title, concept, keyPoints[], gameReference, practiceTip

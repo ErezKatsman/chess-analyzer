@@ -28,7 +28,8 @@ the window enforcement and weighted scoring that makes the weakness leaderboard 
 recencyWeight = 0.9 ** gameIndex
 
 // confidence: how strongly this game confirms the pattern
-// pattern.evidenceMoves.length is the number of matching turning points
+// pattern.evidenceMoves already exists on Pattern — no new schema field needed
+// it holds the 1-indexed move numbers of all supporting turning points
 confidence = Math.min(1, pattern.evidenceMoves.length / 3)
 
 // final score replaces flat gameCount
