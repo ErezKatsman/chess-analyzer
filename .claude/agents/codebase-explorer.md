@@ -22,7 +22,7 @@ You are a read-only codebase explorer for a Next.js 14 chess analyzer app.
 
 ## project context
 - framework: next.js 14 app router
-- auth: clerk (middleware.ts guards /user, /game, /drills)
+- auth: clerk (middleware.ts guards /game and /drills only — /user is intentionally public)
 - language: typescript strict mode
 - styling: tailwind css
 - chess logic: chess.js
@@ -41,15 +41,20 @@ You are a read-only codebase explorer for a Next.js 14 chess analyzer app.
 2. /user fetches archives + games via lib/services/chesscom.ts → cached in CachedGames (TTL 1h)
 3. user clicks game → /game page loads cached GameAnalysis from mongodb
 4. GameReplay client renders; user clicks "analyze" → POST /api/analyze
-5. /api/analyze: quota check → stockfish → turning points → patterns → saves to GameAnalysis
+5. /api/analyze: quota check → stockfish → turning points → patterns → accuracy (chess.com formula) → saves to GameAnalysis
 6. GameReplay calls POST /api/explain (blunder explanations, cached) + POST /api/lessons (pattern lessons, cached)
 7. quota tracked in UserQuota; PaywallModal on 402; paid users (UserProfile.plan='paid') bypass quota
 8. stripe: POST /api/stripe/checkout → redirect; POST /api/stripe/webhook → sets plan='paid'
 
 ## key types (lib/interfaces/)
-- TurningPoint — moveNumber, side, type (blunder/mistake/inaccuracy), evalBefore, evalAfter, movePlayed, positionHint
-- Pattern — tag, title, coachingHint
+- TurningPoint — moveNumber, side, type (blunder/mistake/inaccuracy/missed_win/good_defense), evalBefore, evalAfter, movePlayed (UCI), bestMove (UCI — TODO Slice 2), positionHint (FEN), oneLineReason
+- Pattern — tag, title, coachingHint, evidenceMoves[]
 - PlyEval — score, bestMove
 - Lesson — patternTag, title, concept, keyPoints[], gameReference, practiceTip
 - BlunderExplanation — id, explanation, rule
 - IGame — uuid, date, whiteUsername, blackUsername, whiteRating, blackRating, result, timeClass, pgn
+
+## GameAnalysis key fields
+- evals[], turningPoints[], patterns[], explanations[], lessons[]
+- accuracy?: { white: number; black: number } — chess.com formula, stored at analysis time
+- analysisVersion?: number — current = 1; bump when thresholds change

@@ -1,43 +1,56 @@
 ---
 name: summarize-period
-description: Plan and build the cross-game progress summary feature. Shows the user their patterns and weaknesses aggregated across all analyzed games. This is the highest-priority next feature — it's what converts free users to paid.
+description: Implement Slice 3 of the 5-slice plan — enforce aggregation window (20 games / 60 days) and add recency decay + confidence scoring to cross-game pattern aggregation. The basic features (PatternSummary, ProgressChart, WeaknessDrills) are already built.
 ---
 
 ## summarize-period skill
 
-Build the cross-game pattern aggregation and progress summary on the /user page.
+Slice 3 of the CLAUDE.md 5-slice plan. The core cross-game UI is already built; this slice adds
+the window enforcement and weighted scoring that makes the weakness leaderboard meaningful.
 
-### what this feature is
-- aggregate all `GameAnalysis` docs for a user → find recurring patterns
-- show: "in your last 20 games — time-trouble: 8x, endgame weakness: 6x, opening mistakes: 4x"
-- this is the personalized improvement roadmap. chess.com and lichess do not do this.
+### what is already built — do not re-implement
+- `lib/analysis/patternSummary.ts` — flat gameCount per tag, sorted descending
+- `components/PatternSummary.tsx` — ranked weakness list with coaching hints
+- `components/ProgressChart.tsx` — dual-axis recharts: accuracy (left) + rating (right), dots by result
+- `components/WeaknessDrills.tsx` — cross-game drill component from top pattern tag
+- `GET /api/drills/generated` — filters by top pattern + excludes solved DrillSessions
+- `GameAnalysis.accuracy: { white, black }` — stored at analysis time (chess.com formula) ✅
 
-### what needs to be built
+### what slice 3 adds
 
-**slice 1 — API**
-- `GET /api/user/patterns` — query all `GameAnalysis` docs for the current user
-- count occurrences of each pattern tag across all games
-- return: `{ tag, count, title, coachingHint }[]` sorted by count descending
-- also return: total games analyzed, total games available
+**aggregation window** (enforce in `lib/analysis/patternSummary.ts`)
+- window: last 20 analyzed games OR last 60 days — whichever is smaller
+- minimum 3 analyzed games required; return empty leaderboard below that threshold
 
-**slice 2 — UI**
-- add `WeaknessPanel` component to `/user` page (below StatsBar, above GamesTable)
-- show ranked weakness list: tag chip + count + coaching hint
-- show "X of Y games analyzed" — sparse = paywall teaser
-- show CTA: "practice your #1 weakness → [drills button]"
+**recency decay + confidence scoring**
+```ts
+// gameIndex 0 = most recent; games > 60 days → weight 0 regardless of index
+recencyWeight = 0.9 ** gameIndex
 
-**slice 3 — progress graph**
-- `GET /api/user/progress` — per analyzed game: date, accuracy %, blunder count, result, rating
-- accuracy formula: `100 - (avgCentipawnLoss / 10)` capped at 100 (use evals[] from GameAnalysis)
-- rating: from IGame.whiteRating or blackRating depending on which side user played
-- `ProgressChart` component: recharts line chart, x=date y=accuracy, dots colored by result
+// confidence: how strongly this game confirms the pattern
+// pattern.evidenceMoves.length is the number of matching turning points
+confidence = Math.min(1, pattern.evidenceMoves.length / 3)
 
-### before starting — clarify with user
-- should this be free or paid-only?
-- should the progress graph and weakness panel be on the same page or separate tabs?
-- should unanalyzed games show as gaps in the graph or be excluded entirely?
+// final score replaces flat gameCount
+score[tag] += confidence * recencyWeight
+```
 
-### data available (no new schema needed)
-- `GameAnalysis` model has: patterns[], evals[], turningPoints[], clerkUserId, gameUuid
-- `IGame` has: date, whiteRating, blackRating, result, whiteUsername, blackUsername
-- `CachedGames` links gameUuid → full game data
+**tie-breaker** — tags within 0.05 score of each other:
+1. prefer `selfReportedWeakness` from `UserProfile` (passed in from server)
+2. else prefer higher raw `gameCount`
+
+### accuracy formula (already implemented — do NOT change)
+`103.1668 × exp(-0.04354 × avgCpLoss) - 3.1669` — caps per-move loss at 1000cp, returns 0–100.
+Stored in `GameAnalysis.accuracy`. Never use the old linear formula `100 - (avgCentipawnLoss / 10)`.
+
+### files to touch (Slice 3 only)
+1. `lib/analysis/patternSummary.ts` — add `score` field to `PatternSummaryEntry`; enforce window + decay
+2. `components/UserPageContent.tsx` — pass games in recency order (most recent first) + `selfReportedWeakness`
+3. `components/PatternSummary.tsx` — optionally surface `score` in UI if helpful
+
+### rules
+- max 3 files / ~150 LOC per slice
+- read each file before editing
+- run `npm run typecheck && npm run lint` after changes
+- do not change the chess.com accuracy formula
+- do not add new API routes

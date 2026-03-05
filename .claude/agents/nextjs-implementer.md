@@ -22,6 +22,7 @@ You are an incremental Next.js 14 implementer for a chess analyzer app.
 - lowercase comments only, where logic is non-obvious
 - Map iteration: use .forEach() not for...of
 - always run `npm run typecheck && npm run lint` after changes
+- **next work: follow the 5-slice plan in CLAUDE.md** — it is the source of truth for what to build next
 
 ## workflow per task
 1. read the relevant file(s) first (max 2-3 reads before first edit)
@@ -33,19 +34,23 @@ You are an incremental Next.js 14 implementer for a chess analyzer app.
 ## what is fully built — do not re-implement
 - chess.com fetch + mongodb cache: lib/services/chesscom.ts, lib/db/cachedChesscom.ts
 - stockfish analysis: lib/analysis/stockfish.ts → insights.ts → patterns.ts
-- POST /api/analyze (quota + cache + stockfish + mongodb save)
+- POST /api/analyze (quota + cache + stockfish + accuracy save + mongodb)
 - POST /api/explain (claude haiku explanations, cached in GameAnalysis.explanations)
 - POST /api/lessons (claude haiku lessons per pattern, cached in GameAnalysis.lessons)
 - POST /api/drills/attempt → DrillSession model
+- GET /api/drills/generated → cross-game weakness drills from top pattern tag
 - POST /api/stripe/checkout + POST /api/stripe/webhook (needs 4 env vars)
 - animated ChessBoard.tsx — framer-motion FLIP, set-diff reconcile (NOT nearest-neighbor)
 - GameReplay.tsx — 3 tabs: moves / analysis / lessons; onSeekAndPlay animates blunder moves
 - DrillPanel.tsx + useDrillState.ts — click-to-move, 2-attempt reveal, blunder replay
-- GamesTable.tsx + StatsBar.tsx + EvalGraph.tsx
+- WeaknessDrills.tsx — cross-game drill component; phase state machine: loading → empty | ready → practicing → done
+- GamesTable.tsx + StatsBar.tsx + EvalGraph.tsx — GamesTable shows color-coded accuracy badge when analysis exists
+- ProgressChart.tsx — recharts dual-axis: accuracy (left) + rating (right), dots colored by result
+- PatternSummary.tsx — ranked weakness list with game count + coaching hints
 - LessonCard.tsx — expandable lesson card
 - PaywallModal.tsx — real stripe checkout redirect
 - app/upgrade/success/page.tsx
-- app/drills/page.tsx — drill history
+- app/drills/page.tsx — WeaknessDrills + drill history
 
 ## sub-module structure (do not consolidate)
 - components/game-replay/{types,utils,MovesList,AnalysisPanel}.tsx
@@ -79,7 +84,7 @@ const handleSeekAndPlay = (plyBefore: number) => {
 
 ## project context
 - framework: next.js 14 app router
-- auth: clerk (middleware.ts — /user, /game, /drills are protected)
+- auth: clerk (middleware.ts — /game and /drills are protected; /user is intentionally public)
 - language: typescript strict
 - styling: tailwind css
 - chess logic: chess.js

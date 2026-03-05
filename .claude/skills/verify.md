@@ -6,6 +6,7 @@ description: Run typecheck and lint and report the result. Use after every code 
 ## verify skill
 
 Run the two standard verification commands and report cleanly.
+Per CLAUDE.md workflow: verify after every slice before chaining to the next one.
 
 ### steps
 1. run `npm run typecheck` — report errors or "✓ clean"

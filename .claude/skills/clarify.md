@@ -34,7 +34,8 @@ Before writing any code, identify what is unclear and ask the user directly.
 
 4. **wait for answers before planning or coding**
    - once answered, produce the short plan (3-7 bullets) per CLAUDE.md workflow
-   - then implement slice by slice
+   - confirm which slice of the 5-slice plan this maps to (or that it's independent)
+   - then implement slice by slice; after each slice invoke the verify skill
 
 ### what NOT to ask about
 - implementation details you can decide yourself (file naming, function names, component structure)
