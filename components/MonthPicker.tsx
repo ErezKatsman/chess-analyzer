@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { ArchiveEntry } from '@/lib/services/chesscom';
 
 const MONTH_NAMES = [
@@ -19,6 +19,7 @@ type MonthPickerProps = {
 
 export function MonthPicker({ userName, archives, selectedYear, selectedMonth, basePath = '/user' }: MonthPickerProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const selectedValue = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
@@ -26,6 +27,9 @@ export function MonthPicker({ userName, archives, selectedYear, selectedMonth, b
     const [year, month] = e.target.value.split('-').map(Number);
     const params = new URLSearchParams({ year: String(year), month: String(month) });
     if (basePath !== '/') params.set('userName', userName);
+    // preserve active tab when on the dashboard
+    const tab = searchParams.get('tab');
+    if (basePath === '/' && tab) params.set('tab', tab);
     router.push(`${basePath}?${params.toString()}`);
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,13 @@ export function ConnectAccount() {
   const [isClickable, setIsClickable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // mounted=false on server and initial client render — both show spinner, no hydration mismatch
+  const [mounted, setMounted] = useState(false);
+
+  useLayoutEffect(() => {
+    if (sessionStorage.getItem(ONBOARDING_KEY)) setSaving(true);
+    setMounted(true);
+  }, []);
 
   // auto-submit if user came through the onboarding modal (data saved in sessionStorage)
   useEffect(() => {
@@ -80,8 +87,8 @@ export function ConnectAccount() {
     }
   }
 
-  // show a loading state while auto-submitting from onboarding
-  if (saving && !userName) {
+  // show spinner before hydration (mounted=false) and while auto-submitting from onboarding
+  if (!mounted || (saving && !userName)) {
     return (
       <main className="min-h-screen bg-background flex items-center justify-center px-4">
         <div className="text-center space-y-3">

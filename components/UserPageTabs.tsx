@@ -1,12 +1,15 @@
 'use client';
 
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type { IGame } from '@/lib/interfaces/games';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry } from '@/lib/analysis/patternSummary';
 import { GamesTable } from '@/components/GamesTable';
 import { StatsBar } from '@/components/StatsBar';
-import { ProgressChart } from '@/components/ProgressChart';
+import { ProgressChart, type ChartPoint } from '@/components/ProgressChart';
 import { PatternSummary } from '@/components/PatternSummary';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { RatingHeroCard } from '@/components/RatingHeroCard';
@@ -49,10 +52,48 @@ export function UserPageTabs({
   isOwner,
   activeTab,
 }: Props) {
+  const searchParams = useSearchParams();
   const VALID_TABS = OWNER_TABS.map(t => t.key);
   const tab: Tab = (VALID_TABS.includes(activeTab as Tab) ? activeTab : 'coach') as Tab;
   const analyzedUuids = new Set(analyzedUuidsList);
+
+  // count rated games per time class → default to the most-played one
+  const tcCounts: Record<string, number> = {};
+  games.filter(g => g.rated).forEach(g => {
+    tcCounts[g.timeClass] = (tcCounts[g.timeClass] ?? 0) + 1;
+  });
+  // sorted descending by count so default is the most-played time class
+  const availableTcs = Object.keys(tcCounts).sort((a, b) => tcCounts[b] - tcCounts[a]);
+  const [selectedTc, setSelectedTc] = useState<string>(() => availableTcs[0] ?? 'blitz');
+
+  // build tab href preserving current year/month params
+  function tabHref(key: string): string {
+    const params = new URLSearchParams({ tab: key });
+    const year = searchParams.get('year');
+    const month = searchParams.get('month');
+    if (year) params.set('year', year);
+    if (month) params.set('month', month);
+    return `/?${params.toString()}`;
+  }
   const hasInsights = progressPoints.length > 0;
+
+  // merge all games' ratings with analysis data — filtered to selected time class
+  const analysisMap = new Map(progressPoints.map(p => [p.gameUuid, p]));
+  const allChartPoints: ChartPoint[] = games
+    .filter(g => g.rated && g.timeClass === selectedTc)
+    .map(g => {
+      const rating = g.isWhite ? g.players.white.rating : g.players.black.rating;
+      const result: 'win' | 'loss' | 'draw' = g.isWon ? 'win' : g.isDraw ? 'draw' : 'loss';
+      const analyzed = analysisMap.get(g.uuid);
+      return {
+        date: g.endTime,
+        rating,
+        result,
+        ...(analyzed ? { accuracy: analyzed.accuracy, blunders: analyzed.blunders, mistakes: analyzed.mistakes } : {}),
+      };
+    })
+    .filter(p => p.rating > 0)
+    .sort((a, b) => a.date - b.date);
 
   return (
     <div className="space-y-6">
@@ -61,7 +102,7 @@ export function UserPageTabs({
         {(isOwner ? OWNER_TABS : [{ key: 'games' as Tab, label: 'Games' }]).map(({ key, label }) => (
           <Link
             key={key}
-            href={`/?tab=${key}`}
+            href={tabHref(key)}
             className={[
               'px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
               tab === key
@@ -88,11 +129,47 @@ export function UserPageTabs({
               <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
             </>
           ) : (
-            <div className="rounded-2xl border bg-card p-6 shadow-sm text-center space-y-2">
-              <p className="text-sm font-semibold">no coaching data yet</p>
-              <p className="text-sm text-muted-foreground">
-                analyze a game to see your patterns and get personalized coaching.
-              </p>
+            <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+              <div className="flex flex-col items-center text-center px-8 py-14 space-y-6">
+                {/* bouncing chess piece */}
+                <motion.div
+                  animate={{ y: [0, -14, 0] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                  className="text-7xl select-none"
+                >
+                  ♟
+                </motion.div>
+
+                <div className="space-y-2 max-w-sm">
+                  <h2 className="text-xl font-bold">your coach is waiting</h2>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    analyze a game and unlock your personal coaching plan — see your patterns,
+                    prove your progress, and sharpen the skills that matter most.
+                  </p>
+                </div>
+
+                {/* feature pills */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {['📊 track your patterns', '📈 prove you\'re improving', '🎯 targeted drills'].map(f => (
+                    <motion.span
+                      key={f}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.15 * ['📊 track your patterns', '📈 prove you\'re improving', '🎯 targeted drills'].indexOf(f) }}
+                      className="px-3 py-1 rounded-full bg-muted text-xs font-medium text-muted-foreground"
+                    >
+                      {f}
+                    </motion.span>
+                  ))}
+                </div>
+
+                <Link
+                  href={tabHref('games')}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  analyze your first game →
+                </Link>
+              </div>
             </div>
           )}
         </div>
@@ -102,21 +179,38 @@ export function UserPageTabs({
       {tab === 'progress' && isOwner && (
         <div className="grid gap-6 lg:grid-cols-2">
           <section className="rounded-2xl border bg-card p-6 shadow-sm">
-            <h2 className="text-sm font-semibold mb-1">your progress</h2>
+            <div className="flex items-start justify-between gap-4 mb-1">
+              <h2 className="text-sm font-semibold">your progress</h2>
+              {/* time-class filter pills */}
+              {availableTcs.length > 1 && (
+                <div className="flex gap-1 flex-wrap justify-end">
+                  {availableTcs.map(tc => (
+                    <button
+                      key={tc}
+                      onClick={() => setSelectedTc(tc)}
+                      className={[
+                        'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors capitalize',
+                        selectedTc === tc
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:text-foreground',
+                      ].join(' ')}
+                    >
+                      {tc} <span className="opacity-60">({tcCounts[tc]})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mb-4">
-              accuracy &amp; rating across {progressPoints.length} analyzed game
-              {progressPoints.length !== 1 ? 's' : ''}
+              {selectedTc} — accuracy &amp; rating across {allChartPoints.filter(p => p.accuracy != null).length} analyzed game
+              {allChartPoints.filter(p => p.accuracy != null).length !== 1 ? 's' : ''} of {allChartPoints.length} total
               <span className="inline-flex gap-3 ml-2">
                 <span><span className="text-emerald-400">●</span> win</span>
                 <span><span className="text-red-400">●</span> loss</span>
                 <span><span className="text-slate-400">●</span> draw</span>
               </span>
             </p>
-            {hasInsights ? (
-              <ProgressChart data={progressPoints} drillMarkers={drillMarkers} />
-            ) : (
-              <p className="text-sm text-muted-foreground">analyze games to see your progress.</p>
-            )}
+            <ProgressChart data={allChartPoints} drillMarkers={drillMarkers} />
           </section>
           <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
         </div>
