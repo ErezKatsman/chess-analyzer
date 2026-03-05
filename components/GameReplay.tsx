@@ -20,7 +20,7 @@ import type {
   Pattern,
   BlunderExplanation,
 } from '@/components/game-replay/types';
-import { formatEndTime, groupMoves } from '@/components/game-replay/utils';
+import { formatEndTime, groupMoves, computeMoveQuality, computeAccuracy, type MoveQuality } from '@/components/game-replay/utils';
 import { MovesList } from '@/components/game-replay/MovesList';
 import { AnalysisPanel } from '@/components/game-replay/AnalysisPanel';
 import { LessonCard } from '@/components/LessonCard';
@@ -196,19 +196,22 @@ export function GameReplay({
   const canPrev = clampedIndex > 0;
   const canNext = clampedIndex < maxIndex;
 
-  // set of plies where a blunder occurred — used by EvalGraph to draw red markers
-  const blunderPlies = React.useMemo(() => {
-    if (analysis.status !== 'done') return new Set<number>();
-    const set = new Set<number>();
+  // plies by severity — used by EvalGraph to draw colored markers
+  const markedPlies = React.useMemo(() => {
+    if (analysis.status !== 'done') return { blunder: new Set<number>(), mistake: new Set<number>(), inaccuracy: new Set<number>() };
+    const blunder = new Set<number>();
+    const mistake = new Set<number>();
+    const inaccuracy = new Set<number>();
     for (const tp of analysis.result.turningPoints) {
-      if (tp.type !== 'blunder') continue;
       const ply =
         tp.side === 'white'
           ? (tp.moveNumber - 1) * 2 + 1
           : (tp.moveNumber - 1) * 2 + 2;
-      set.add(ply);
+      if (tp.type === 'blunder') blunder.add(ply);
+      else if (tp.type === 'mistake') mistake.add(ply);
+      else if (tp.type === 'inaccuracy') inaccuracy.add(ply);
     }
-    return set;
+    return { blunder, mistake, inaccuracy };
   }, [analysis]);
 
   // build drill list from blunders that have a bestMove from the engine
@@ -234,6 +237,42 @@ export function GameReplay({
           evalAfter: tp.evalAfter,
         }];
       });
+  }, [analysis]);
+
+  // keyboard navigation — arrow keys for prev/next ply
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      // skip if focused in an input / select to avoid hijacking typing
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === 'ArrowLeft') setIndex((v) => Math.max(0, v - 1));
+      if (e.key === 'ArrowRight') setIndex((v) => Math.min(maxIndex, v + 1));
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [maxIndex]);
+
+  // accuracy % per side — computed from avg cp loss using chess.com formula
+  const accuracy = React.useMemo(() => {
+    if (analysis.status !== 'done') return null;
+    const ev = analysis.result.evals;
+    return {
+      player: computeAccuracy(ev, isWhite ? 'white' : 'black'),
+      opponent: computeAccuracy(ev, isWhite ? 'black' : 'white'),
+    };
+  }, [analysis, isWhite]);
+
+  // quality annotation for every ply — derived from evals[], shown in move list
+  const moveQualityMap = React.useMemo(() => {
+    const map = new Map<number, MoveQuality>();
+    if (analysis.status !== 'done') return map;
+    const ev = analysis.result.evals;
+    for (let p = 1; p < ev.length; p++) {
+      // ply 1 = white's first move, ply 2 = black's, etc.
+      const side: 'white' | 'black' = p % 2 === 1 ? 'white' : 'black';
+      map.set(p, computeMoveQuality(ev[p - 1], ev[p], side));
+    }
+    return map;
   }, [analysis]);
 
   // fast lookup: `${moveNumber}-${side}` → TurningPoint
@@ -397,7 +436,7 @@ export function GameReplay({
             evals={analysis.result.evals}
             currentPly={clampedIndex}
             onSeek={setIndex}
-            blunderPlies={blunderPlies}
+            markedPlies={markedPlies}
           />
         ) : null}
 
@@ -585,6 +624,7 @@ export function GameReplay({
             clampedIndex={clampedIndex}
             maxIndex={maxIndex}
             tpMap={tpMap}
+            moveQualityMap={moveQualityMap}
             onSeek={setIndex}
           />
         ) : null /* end moves tab */}
@@ -600,6 +640,8 @@ export function GameReplay({
             onSeek={setIndex}
             onSeekAndPlay={handleSeekAndPlay}
             onStartDrills={() => setDrillIndex(0)}
+            playerSide={isWhite ? 'white' : 'black'}
+            accuracy={accuracy}
           />
         ) : null /* end analysis tab */}
 

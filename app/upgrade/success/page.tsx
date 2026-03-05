@@ -14,7 +14,7 @@ export default function UpgradeSuccessPage() {
           unlimited analyses, drills, and ai coaching are now unlocked. go crush some openings.
         </p>
         <Button asChild className="w-full">
-          <Link href="/user">go to my games →</Link>
+          <Link href="/">go to my dashboard →</Link>
         </Button>
       </div>
     </main>

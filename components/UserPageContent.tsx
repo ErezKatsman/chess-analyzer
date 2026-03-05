@@ -6,9 +6,10 @@ import type { IGame } from '@/lib/interfaces/games';
 import { fetchUserArchives } from '@/lib/services/chesscom';
 import { fetchMonthlyGamesCached, fetchLatestMonthlyGamesCached } from '@/lib/db/cachedChesscom';
 import { connectDB } from '@/lib/db/mongo';
-import { GameAnalysis, DrillSession } from '@/lib/db/schemas';
+import { GameAnalysis, DrillSession, UserProfile } from '@/lib/db/schemas';
 import { MonthPicker } from '@/components/MonthPicker';
 import { UserPageTabs } from '@/components/UserPageTabs';
+import type { ProfileData } from '@/components/UserPageTabs';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { buildProgressPoint } from '@/lib/analysis/progressUtils';
 import { aggregatePatterns } from '@/lib/analysis/patternSummary';
@@ -68,12 +69,13 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
   let progressPoints: ProgressPoint[] = [];
   let patternEntries: PatternSummaryEntry[] = [];
   let drillMarkers: number[] = []; // unix timestamps (day-level) when user practiced drills
+  let profileData: ProfileData | null = null;
 
   // only load personal analysis on the home dashboard, not on public browse pages
   if (userId && basePath === '/') {
     try {
       await connectDB();
-      const [allAnalyzed, drillDocs] = await Promise.all([
+      const [allAnalyzed, drillDocs, profileDoc] = await Promise.all([
         GameAnalysis.find(
           { clerkUserId: userId },
           { gameUuid: 1, pgn: 1, playerSide: 1, evals: 1, turningPoints: 1, patterns: 1 },
@@ -82,7 +84,19 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
           { clerkUserId: userId, solved: true },
           { createdAt: 1 },
         ).lean(),
+        UserProfile.findOne(
+          { clerkUserId: userId },
+          { plan: 1, targetRating: 1, timePreference: 1, experience: 1, selfReportedWeakness: 1 },
+        ).lean(),
       ]);
+
+      profileData = {
+        plan: (profileDoc?.plan ?? 'free') as 'free' | 'paid',
+        ...(profileDoc?.targetRating != null ? { targetRating: profileDoc.targetRating as number } : {}),
+        ...(profileDoc?.timePreference ? { timePreference: profileDoc.timePreference as string } : {}),
+        ...(profileDoc?.experience ? { experience: profileDoc.experience as string } : {}),
+        ...(profileDoc?.selfReportedWeakness ? { selfReportedWeakness: profileDoc.selfReportedWeakness as string } : {}),
+      };
 
       analyzedUuids = new Set(allAnalyzed.map((a) => a.gameUuid as string));
 
@@ -161,6 +175,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
           drillMarkers={drillMarkers}
           isOwner={Boolean(userId && basePath === '/')}
           activeTab={basePath === '/' ? tab : 'games'}
+          profileData={profileData}
         />
       </div>
     </main>

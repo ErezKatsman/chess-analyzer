@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
       if (!clerkUserId) break;
 
-      // upgrade user to paid plan — upsert in case profile doesn't exist yet
+      // upgrade user to paid plan — profile must exist (user connects account before paying)
       await UserProfile.findOneAndUpdate(
         { clerkUserId },
         {

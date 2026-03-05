@@ -3,18 +3,25 @@
 // global navbar — logo + auth controls + theme toggle.
 
 import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
+import { Brain, TrendingUp, LayoutGrid, User, Settings } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 const NAV_TABS = [
-  { key: 'coach', label: 'Coach' },
-  { key: 'progress', label: 'Progress' },
-  { key: 'games', label: 'Games' },
-  { key: 'profile', label: 'My Profile' },
-  { key: 'settings', label: 'Settings' },
+  { key: 'coach',    label: 'Coach',      icon: Brain       },
+  { key: 'progress', label: 'Progress',   icon: TrendingUp  },
+  { key: 'games',    label: 'Games',      icon: LayoutGrid  },
+  { key: 'profile',  label: 'My Profile', icon: User        },
+  { key: 'settings', label: 'Settings',   icon: Settings    },
 ] as const;
 
 export function Navbar() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // only highlight tabs when on the home dashboard
+  const activeTab = pathname === '/' ? (searchParams.get('tab') ?? 'coach') : null;
+
   return (
     <nav className="sticky top-0 z-40 w-full border-b bg-card/80 backdrop-blur-sm">
       <div className="mx-auto flex h-12 w-full max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -30,15 +37,24 @@ export function Navbar() {
         {/* center nav tabs — signed-in only */}
         <SignedIn>
           <div className="flex items-center gap-0.5 mx-4">
-            {NAV_TABS.map(({ key, label }) => (
-              <Link
-                key={key}
-                href={`/?tab=${key}`}
-                className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors whitespace-nowrap"
-              >
-                {label}
-              </Link>
-            ))}
+            {NAV_TABS.map(({ key, label, icon: Icon }) => {
+              const isActive = activeTab === key;
+              return (
+                <Link
+                  key={key}
+                  href={`/?tab=${key}`}
+                  className={[
+                    'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap',
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                  ].join(' ')}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </Link>
+              );
+            })}
           </div>
         </SignedIn>
 

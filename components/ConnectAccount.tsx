@@ -37,6 +37,7 @@ export function ConnectAccount() {
       return;
     }
     if (!stored.chessUsername) return;
+    const savedUsername = stored.chessUsername;
     sessionStorage.removeItem(ONBOARDING_KEY);
     setSaving(true);
     fetch('/api/user/profile', {
@@ -48,9 +49,15 @@ export function ConnectAccount() {
         router.push('/');
         router.refresh();
       } else {
+        setUserName(savedUsername);
+        setError('couldn\'t link your account — please try again');
         setSaving(false);
       }
-    }).catch(() => setSaving(false));
+    }).catch(() => {
+      setUserName(savedUsername);
+      setError('network error — please try again');
+      setSaving(false);
+    });
   }, [router]);
 
   useEffect(() => {

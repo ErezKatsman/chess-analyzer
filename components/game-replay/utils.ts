@@ -2,6 +2,85 @@
 // pure helpers for the game-replay feature — no react dependencies
 
 import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
+import type { PlyEval } from './types';
+
+// ── move quality ────────────────────────────────────────────────────────────
+
+export type MoveQuality = 'blunder' | 'mistake' | 'inaccuracy' | 'normal' | 'good';
+
+// mirrors thresholds in insights.ts; applied to every ply (no decided-suppression for blunders)
+const BLUNDER_CP = 200;
+const MISTAKE_CP = 100;
+const INACCURACY_CP = 50;
+const DECIDED_BLUNDER_CP = 350;  // suppress blunder when position already decided beyond this
+const DECIDED_MINOR_CP = 500;    // suppress mistake/inaccuracy beyond this
+
+function toCpVal(e: PlyEval): number {
+  if (e.cp !== null) return e.cp;
+  if (e.mate !== null) return e.mate > 0 ? 2000 : -2000;
+  return 0;
+}
+
+// ── accuracy score ───────────────────────────────────────────────────────────
+// chess.com-style accuracy: 103.1668 * exp(-0.04354 * avgCpLoss) - 3.1669
+// caps individual move loss at 1000cp to avoid outlier distortion
+
+export function computeAccuracy(evals: PlyEval[], side: 'white' | 'black'): number {
+  const sign = side === 'white' ? 1 : -1;
+  const losses: number[] = [];
+  for (let p = 1; p < evals.length; p++) {
+    // white plays on odd plies (1,3,5...), black on even (2,4,6...)
+    if (side === 'white' && p % 2 !== 1) continue;
+    if (side === 'black' && p % 2 !== 0) continue;
+    const cpB = sign * toCpVal(evals[p - 1]);
+    const cpA = sign * toCpVal(evals[p]);
+    losses.push(Math.min(Math.max(0, cpB - cpA), 1000));
+  }
+  if (losses.length === 0) return 100;
+  const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
+  const raw = 103.1668 * Math.exp(-0.04354 * avg) - 3.1669;
+  return Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
+}
+
+export function computeMoveQuality(
+  before: PlyEval,
+  after: PlyEval,
+  side: 'white' | 'black',
+): MoveQuality {
+  const sign = side === 'white' ? 1 : -1;
+  const cpB = sign * toCpVal(before);
+  const cpA = sign * toCpVal(after);
+  const loss = cpB - cpA; // positive = mover got worse
+  const absBefore = Math.abs(cpB);
+
+  if (loss >= BLUNDER_CP && absBefore <= DECIDED_BLUNDER_CP) return 'blunder';
+  if (loss >= MISTAKE_CP && absBefore <= DECIDED_MINOR_CP) return 'mistake';
+  if (loss >= INACCURACY_CP && absBefore <= DECIDED_MINOR_CP) return 'inaccuracy';
+  // good: mover was losing but found a defensive resource that improved their eval
+  if (loss <= -50 && cpB < 0) return 'good';
+  return 'normal';
+}
+
+export function moveQualitySymbol(q: MoveQuality): string {
+  switch (q) {
+    case 'blunder': return '??';
+    case 'mistake': return '?';
+    case 'inaccuracy': return '?!';
+    case 'good': return '!';
+    default: return '';
+  }
+}
+
+export function moveQualityBadgeClass(q: MoveQuality): string {
+  const base = 'inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none';
+  switch (q) {
+    case 'blunder': return `${base} bg-red-500/15 text-red-500`;
+    case 'mistake': return `${base} bg-orange-400/15 text-orange-400`;
+    case 'inaccuracy': return `${base} bg-yellow-500/15 text-yellow-600 dark:text-yellow-500`;
+    case 'good': return `${base} bg-green-500/15 text-green-500`;
+    default: return '';
+  }
+}
 
 export type MoveRow = { moveNumber: number; white?: string; black?: string };
 

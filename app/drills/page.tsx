@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { connectDB } from '@/lib/db/mongo';
 import { DrillSession, UserProfile } from '@/lib/db/schemas';
+import { WeaknessDrills } from '@/components/WeaknessDrills';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,14 +76,12 @@ export default async function DrillsPage() {
                 {sessions.length} drills attempted · {solvedSessions.length} solved · {sessions.length - solvedSessions.length} missed
               </p>
             </div>
-            {userName && (
-              <Link
-                href={`/user?userName=${encodeURIComponent(userName)}`}
-                className="text-sm underline underline-offset-4 text-muted-foreground hover:text-foreground"
-              >
-                ← back to games
-              </Link>
-            )}
+            <Link
+              href="/?tab=games"
+              className="text-sm underline underline-offset-4 text-muted-foreground hover:text-foreground"
+            >
+              ← back to games
+            </Link>
           </div>
 
           {/* overall accuracy pills */}
@@ -110,6 +109,9 @@ export default async function DrillsPage() {
           )}
         </div>
 
+        {/* cross-game weakness drill practice — fetches its own data client-side */}
+        <WeaknessDrills />
+
         {sessions.length === 0 ? (
           <div className="rounded-2xl border bg-card p-8 shadow-sm text-center">
             <p className="text-2xl mb-2">♟</p>
@@ -117,14 +119,12 @@ export default async function DrillsPage() {
             <p className="text-sm text-muted-foreground mt-1">
               analyze a game and click &quot;practice blunders&quot; to start drilling.
             </p>
-            {userName && (
-              <Link
-                href={`/user?userName=${encodeURIComponent(userName)}`}
-                className="mt-4 inline-block text-sm underline underline-offset-4"
-              >
-                go to my games →
-              </Link>
-            )}
+            <Link
+              href="/?tab=games"
+              className="mt-4 inline-block text-sm underline underline-offset-4"
+            >
+              go to my games →
+            </Link>
           </div>
         ) : (
           <>

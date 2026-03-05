@@ -14,6 +14,15 @@ import { PatternSummary } from '@/components/PatternSummary';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { RatingHeroCard } from '@/components/RatingHeroCard';
 import { CoachBanner } from '@/components/CoachBanner';
+import { PaywallModal } from '@/components/PaywallModal';
+
+export type ProfileData = {
+  plan: 'free' | 'paid';
+  targetRating?: number;
+  timePreference?: string;
+  experience?: string;
+  selfReportedWeakness?: string;
+};
 
 type Tab = 'coach' | 'progress' | 'games' | 'profile' | 'settings';
 
@@ -29,6 +38,7 @@ interface Props {
   drillMarkers: number[]; // unix timestamps (day-level) when user drilled
   isOwner: boolean;
   activeTab: string;
+  profileData?: ProfileData | null;
 }
 
 const OWNER_TABS: { key: Tab; label: string }[] = [
@@ -51,8 +61,10 @@ export function UserPageTabs({
   drillMarkers,
   isOwner,
   activeTab,
+  profileData,
 }: Props) {
   const searchParams = useSearchParams();
+  const [showPaywall, setShowPaywall] = useState(false);
   const VALID_TABS = OWNER_TABS.map(t => t.key);
   const tab: Tab = (VALID_TABS.includes(activeTab as Tab) ? activeTab : 'coach') as Tab;
   const analyzedUuids = new Set(analyzedUuidsList);
@@ -252,16 +264,74 @@ export function UserPageTabs({
 
       {/* ── Profile tab ── */}
       {tab === 'profile' && isOwner && (
-        <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4 max-w-md">
-          <h2 className="text-sm font-semibold">chess.com account</h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">{userName}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">linked chess.com username</p>
+        <>
+          <PaywallModal open={showPaywall} onClose={() => setShowPaywall(false)} />
+          <div className="grid gap-6 lg:grid-cols-2 max-w-2xl">
+            {/* account section */}
+            <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4">
+              <h2 className="text-sm font-semibold">account</h2>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{userName}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">chess.com username</p>
+                </div>
+                <ChangeUsernameButton />
+              </div>
+              <div className="flex items-center justify-between border-t pt-4">
+                {profileData?.plan === 'paid' ? (
+                  <p className="text-sm font-medium text-emerald-500">✓ premium · unlimited</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">free · 3 analyses / month</p>
+                    <button
+                      onClick={() => setShowPaywall(true)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      upgrade →
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-            <ChangeUsernameButton />
+
+            {/* goals section */}
+            <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4">
+              <h2 className="text-sm font-semibold">your goals</h2>
+              {profileData?.targetRating || profileData?.timePreference || profileData?.experience || profileData?.selfReportedWeakness ? (
+                <dl className="space-y-3 text-sm">
+                  {profileData?.targetRating && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">target rating</dt>
+                      <dd className="font-medium">{profileData.targetRating}</dd>
+                    </div>
+                  )}
+                  {profileData?.timePreference && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">time preference</dt>
+                      <dd className="font-medium capitalize">{profileData.timePreference}</dd>
+                    </div>
+                  )}
+                  {profileData?.experience && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">experience</dt>
+                      <dd className="font-medium capitalize">{profileData.experience}</dd>
+                    </div>
+                  )}
+                  {profileData?.selfReportedWeakness && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">top weakness</dt>
+                      <dd className="font-medium capitalize">{profileData.selfReportedWeakness}</dd>
+                    </div>
+                  )}
+                </dl>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  no goals set. complete onboarding to add goals.
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* ── Settings tab ── */}

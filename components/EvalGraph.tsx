@@ -12,6 +12,9 @@ type Props = {
   evals: PlyEval[];
   currentPly: number;
   onSeek: (ply: number) => void;
+  // colored markers per severity: blunder=red, mistake=orange, inaccuracy=yellow
+  markedPlies?: { blunder: Set<number>; mistake: Set<number>; inaccuracy: Set<number> };
+  /** @deprecated use markedPlies */
   blunderPlies?: Set<number>;
 };
 
@@ -43,7 +46,13 @@ const HALF_H = VIEW_H / 2;
 const PADDING_X = 4;
 const USABLE_W = VIEW_W - PADDING_X * 2;
 
-export function EvalGraph({ evals, currentPly, onSeek, blunderPlies }: Props) {
+export function EvalGraph({ evals, currentPly, onSeek, markedPlies, blunderPlies }: Props) {
+  // support legacy blunderPlies prop
+  const resolvedMarked = markedPlies ?? {
+    blunder: blunderPlies ?? new Set<number>(),
+    mistake: new Set<number>(),
+    inaccuracy: new Set<number>(),
+  };
   const svgRef = React.useRef<SVGSVGElement>(null);
 
   const totalPlies = evals.length;
@@ -143,21 +152,32 @@ export function EvalGraph({ evals, currentPly, onSeek, blunderPlies }: Props) {
           strokeWidth="0.5"
         />
 
-        {/* blunder markers */}
-        {blunderPlies &&
-          points
-            .filter((p) => blunderPlies.has(p.ply))
-            .map((p) => (
+        {/* turning point markers — blunder=red, mistake=orange, inaccuracy=yellow */}
+        {points
+          .filter((p) =>
+            resolvedMarked.blunder.has(p.ply) ||
+            resolvedMarked.mistake.has(p.ply) ||
+            resolvedMarked.inaccuracy.has(p.ply),
+          )
+          .map((p) => {
+            const fill = resolvedMarked.blunder.has(p.ply)
+              ? '#ef4444'
+              : resolvedMarked.mistake.has(p.ply)
+                ? '#fb923c'
+                : '#eab308';
+            const r = resolvedMarked.blunder.has(p.ply) ? 2.8 : 2.2;
+            return (
               <circle
                 key={p.ply}
                 cx={p.x}
                 cy={p.y}
-                r="2.5"
-                fill="#ef4444"
+                r={r}
+                fill={fill}
                 stroke="white"
                 strokeWidth="0.5"
               />
-            ))}
+            );
+          })}
 
         {/* current ply cursor */}
         <line

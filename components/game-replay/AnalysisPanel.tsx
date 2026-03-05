@@ -4,7 +4,7 @@
 // analysis tab content: stat pills, key errors with ai explanations, patterns detected
 
 import { Button } from '@/components/ui/button';
-import type { AnalysisState, BlunderExplanation } from './types';
+import type { AnalysisState, BlunderExplanation, TurningPoint } from './types';
 import { tpBadgeClass, tpSymbol, patternTagClass } from './utils';
 
 type AnalysisPanelProps = {
@@ -18,7 +18,51 @@ type AnalysisPanelProps = {
   // seek to plyBefore then animate the blunder move (plyBefore + 1)
   onSeekAndPlay: (plyBefore: number) => void;
   onStartDrills: () => void;
+  // whose game we are viewing — determines narrative framing
+  playerSide: 'white' | 'black';
+  // accuracy % per side — null until analysis runs
+  accuracy?: { player: number; opponent: number } | null;
 };
+
+// ── game narrative ──────────────────────────────────────────────────────────
+// produces a 1-2 sentence plain-english summary of the game arc
+
+function buildNarrative(
+  turningPoints: TurningPoint[],
+  playerSide: 'white' | 'black',
+): string {
+  const playerBlunders = turningPoints.filter(
+    (tp) => tp.side === playerSide && tp.type === 'blunder',
+  );
+  const opponentBlunders = turningPoints.filter(
+    (tp) => tp.side !== playerSide && tp.type === 'blunder',
+  );
+
+  if (turningPoints.length === 0) return 'clean game — no major errors detected.';
+
+  const firstBlunder = turningPoints.find(
+    (tp) => tp.type === 'blunder' && tp.side === playerSide,
+  );
+
+  if (playerBlunders.length === 0) {
+    return opponentBlunders.length > 0
+      ? `you played a clean game — your opponent made ${opponentBlunders.length} blunder${opponentBlunders.length > 1 ? 's' : ''}.`
+      : 'you played a solid game with no blunders.';
+  }
+
+  const pivot = firstBlunder
+    ? `the key moment was move ${firstBlunder.moveNumber}`
+    : null;
+
+  const total =
+    playerBlunders.length === 1
+      ? '1 critical blunder'
+      : `${playerBlunders.length} blunders`;
+
+  return pivot
+    ? `you made ${total} — ${pivot} changed the course of the game.`
+    : `you made ${total} that shifted the advantage.`;
+}
 
 export function AnalysisPanel({
   analysisState,
@@ -29,11 +73,54 @@ export function AnalysisPanel({
   onSeek,
   onSeekAndPlay,
   onStartDrills,
+  playerSide,
+  accuracy,
 }: AnalysisPanelProps) {
   return (
     <div className="mt-3 grid max-h-[calc(100vh-300px)] gap-3 overflow-y-auto">
       {analysisState.status === 'done' ? (
         <>
+          {/* game narrative — one-line story of the game */}
+          <div className="rounded-lg border bg-muted/30 px-3 py-2.5 text-sm text-foreground">
+            {buildNarrative(analysisState.result.turningPoints, playerSide)}
+          </div>
+
+          {/* accuracy scores — the headline metric players care about most */}
+          {accuracy ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border bg-background px-3 py-2 text-center">
+                <div
+                  className={[
+                    'text-2xl font-bold tabular-nums',
+                    accuracy.player >= 85
+                      ? 'text-green-600 dark:text-green-400'
+                      : accuracy.player >= 70
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-red-500',
+                  ].join(' ')}
+                >
+                  {accuracy.player}%
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">your accuracy</div>
+              </div>
+              <div className="rounded-lg border bg-background px-3 py-2 text-center">
+                <div
+                  className={[
+                    'text-2xl font-bold tabular-nums',
+                    accuracy.opponent >= 85
+                      ? 'text-green-600 dark:text-green-400'
+                      : accuracy.opponent >= 70
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-red-500',
+                  ].join(' ')}
+                >
+                  {accuracy.opponent}%
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">opponent accuracy</div>
+              </div>
+            </div>
+          ) : null}
+
           {/* stat pills — colored pill per category for quick scanning */}
           <div className="flex flex-wrap items-center gap-2">
             {(() => {
