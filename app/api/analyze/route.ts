@@ -11,6 +11,35 @@ import { connectDB } from '@/lib/db/mongo';
 import { GameAnalysis, UserQuota, UserProfile } from '@/lib/db/schemas';
 
 const FREE_LIMIT = 3;
+const ANALYSIS_VERSION = 1;
+
+// ── accuracy helpers (mirrors components/game-replay/utils.ts) ────────────────
+
+type EvalLike = { cp: number | null; mate: number | null };
+
+function evalToCp(e: EvalLike): number {
+  if (e.cp !== null) return e.cp;
+  if (e.mate !== null) return e.mate > 0 ? 2000 : -2000;
+  return 0;
+}
+
+// chess.com-style: 103.1668 * exp(-0.04354 * avgCpLoss) - 3.1669
+// individual move loss capped at 1000cp to avoid outlier distortion
+function computeAccuracy(evals: EvalLike[], side: 'white' | 'black'): number {
+  const sign = side === 'white' ? 1 : -1;
+  const losses: number[] = [];
+  for (let p = 1; p < evals.length; p++) {
+    if (side === 'white' && p % 2 !== 1) continue;
+    if (side === 'black' && p % 2 !== 0) continue;
+    const cpBefore = sign * evalToCp(evals[p - 1]);
+    const cpAfter = sign * evalToCp(evals[p]);
+    losses.push(Math.min(Math.max(0, cpBefore - cpAfter), 1000));
+  }
+  if (losses.length === 0) return 100;
+  const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
+  const raw = 103.1668 * Math.exp(-0.04354 * avg) - 3.1669;
+  return Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
+}
 
 function currentMonth(): string {
   const d = new Date();
@@ -115,6 +144,7 @@ export async function POST(request: Request) {
         turningPoints: cached.turningPoints,
         patterns: cached.patterns,
         explanations: cached.explanations ?? [],
+        accuracy: cached.accuracy ?? null,
         fromCache: true,
       });
     }
@@ -167,16 +197,33 @@ export async function POST(request: Request) {
       : allTurningPoints;
     const patterns = detectPatterns(moves, rawEvals, turningPoints);
 
+    // compute per-side accuracy scores from the eval array
+    const accuracy = {
+      white: computeAccuracy(evals, 'white'),
+      black: computeAccuracy(evals, 'black'),
+    };
+
     // save to mongodb so future loads are instant
     if (gameUuid) {
       await GameAnalysis.findOneAndUpdate(
         { clerkUserId: userId, gameUuid },
-        { clerkUserId: userId, gameUuid, pgn, playerSide: playerSide ?? 'white', evals, turningPoints, patterns, analyzedAt: new Date() },
+        {
+          clerkUserId: userId,
+          gameUuid,
+          pgn,
+          playerSide: playerSide ?? 'white',
+          evals,
+          turningPoints,
+          patterns,
+          accuracy,
+          analysisVersion: ANALYSIS_VERSION,
+          analyzedAt: new Date(),
+        },
         { upsert: true },
       );
     }
 
-    return NextResponse.json({ evals, turningPoints, patterns });
+    return NextResponse.json({ evals, turningPoints, patterns, accuracy });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'analysis failed';
     return NextResponse.json({ error: message }, { status: 500 });

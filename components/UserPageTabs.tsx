@@ -39,6 +39,8 @@ interface Props {
   isOwner: boolean;
   activeTab: string;
   profileData?: ProfileData | null;
+  // per-game player accuracy: uuid → { white, black }
+  accuracyRecord?: Record<string, { white: number; black: number }>;
 }
 
 const OWNER_TABS: { key: Tab; label: string }[] = [
@@ -62,6 +64,7 @@ export function UserPageTabs({
   isOwner,
   activeTab,
   profileData,
+  accuracyRecord,
 }: Props) {
   const searchParams = useSearchParams();
   const [showPaywall, setShowPaywall] = useState(false);
@@ -255,6 +258,7 @@ export function UserPageTabs({
                 archiveYear={archiveYear}
                 archiveMonth={archiveMonth}
                 analyzedUuids={analyzedUuids}
+                accuracyRecord={accuracyRecord}
                 isOwner={isOwner}
               />
             </>

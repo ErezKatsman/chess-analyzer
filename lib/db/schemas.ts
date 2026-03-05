@@ -17,6 +17,10 @@ export interface IGameAnalysis extends Document {
   patterns: object[];
   explanations: object[];
   lessons: object[];
+  // accuracy scores per side — computed from evals, stored for fast display in GamesTable
+  accuracy?: { white: number; black: number };
+  // increment when analysis logic changes to detect stale cached results
+  analysisVersion?: number;
   analyzedAt: Date;
 }
 
@@ -30,6 +34,11 @@ const GameAnalysisSchema = new Schema<IGameAnalysis>({
   patterns: { type: [Schema.Types.Mixed], default: [] },
   explanations: { type: [Schema.Types.Mixed], default: [] },
   lessons: { type: [Schema.Types.Mixed], default: [] },
+  accuracy: {
+    type: new Schema({ white: Number, black: Number }, { _id: false }),
+    default: undefined,
+  },
+  analysisVersion: { type: Number, default: 1 },
   analyzedAt: { type: Date, default: Date.now },
 });
 

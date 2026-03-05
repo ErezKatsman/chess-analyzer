@@ -23,11 +23,13 @@ type GamesTableProps = {
   archiveYear: number;
   archiveMonth: number; // 1-12
   analyzedUuids?: Set<string>;
+  // per-game accuracy: uuid → { white, black } — from stored GameAnalysis
+  accuracyRecord?: Record<string, { white: number; black: number }>;
   // false = public browse mode — no analyze button, just chess.com link
   isOwner?: boolean;
 };
 
-export function GamesTable({ userName, games, archiveYear, archiveMonth, analyzedUuids, isOwner = false }: GamesTableProps) {
+export function GamesTable({ userName, games, archiveYear, archiveMonth, analyzedUuids, accuracyRecord, isOwner = false }: GamesTableProps) {
   const sortedGames = [...games].sort((a, b) => b.endTime - a.endTime);
 
   return (
@@ -74,6 +76,8 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth, analyze
               const opening = safeOpening(game.gameDetails.opening);
               const analyzeHref = buildAnalyzeHref(userName, game, archiveYear, archiveMonth);
               const isAnalyzed = analyzedUuids?.has(game.uuid) ?? false;
+              const accEntry = accuracyRecord?.[game.uuid];
+              const playerAcc = accEntry ? (game.isWhite ? accEntry.white : accEntry.black) : null;
 
               return (
                 <TableRow
@@ -165,6 +169,21 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth, analyze
                           {isAnalyzed && (
                             <span className="text-[10px] font-semibold text-emerald-500">
                               ✓ analyzed
+                            </span>
+                          )}
+                          {playerAcc !== null && (
+                            <span
+                              className={[
+                                'text-[10px] font-semibold tabular-nums',
+                                playerAcc >= 85
+                                  ? 'text-green-600 dark:text-green-400'
+                                  : playerAcc >= 70
+                                    ? 'text-yellow-600 dark:text-yellow-500'
+                                    : 'text-red-500',
+                              ].join(' ')}
+                              title="your accuracy for this game"
+                            >
+                              {playerAcc}% acc
                             </span>
                           )}
                           <Link
