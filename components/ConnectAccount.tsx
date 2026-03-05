@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { checkAndSetUserExist } from '@/lib/userUtils';
+import { ONBOARDING_KEY, type OnboardingStoredData } from '@/components/OnboardingModal';
 
 // shown to signed-in users who have no saved chess.com username yet.
 // this is the ONLY place that saves a chess.com username to a profile.
@@ -16,6 +17,41 @@ export function ConnectAccount() {
   const [isClickable, setIsClickable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // mounted=false on server and initial client render — both show spinner, no hydration mismatch
+  const [mounted, setMounted] = useState(false);
+
+  useLayoutEffect(() => {
+    if (sessionStorage.getItem(ONBOARDING_KEY)) setSaving(true);
+    setMounted(true);
+  }, []);
+
+  // auto-submit if user came through the onboarding modal (data saved in sessionStorage)
+  useEffect(() => {
+    const raw = sessionStorage.getItem(ONBOARDING_KEY);
+    if (!raw) return;
+    let stored: OnboardingStoredData;
+    try {
+      stored = JSON.parse(raw) as OnboardingStoredData;
+    } catch {
+      sessionStorage.removeItem(ONBOARDING_KEY);
+      return;
+    }
+    if (!stored.chessUsername) return;
+    sessionStorage.removeItem(ONBOARDING_KEY);
+    setSaving(true);
+    fetch('/api/user/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(stored),
+    }).then(res => {
+      if (res.ok) {
+        router.push('/');
+        router.refresh();
+      } else {
+        setSaving(false);
+      }
+    }).catch(() => setSaving(false));
+  }, [router]);
 
   useEffect(() => {
     const normalized = userName.trim();
@@ -51,6 +87,18 @@ export function ConnectAccount() {
     }
   }
 
+  // show spinner before hydration (mounted=false) and while auto-submitting from onboarding
+  if (!mounted || (saving && !userName)) {
+    return (
+      <main className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center space-y-3">
+          <div className="text-4xl animate-pulse select-none">♟</div>
+          <p className="text-muted-foreground text-sm">Setting up your coaching plan…</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6">
@@ -76,13 +124,13 @@ export function ConnectAccount() {
                 setError(null);
                 setUserName(e.target.value);
               }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleConnect(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleConnect(); }}
               className="h-11"
               autoFocus
             />
             <Button
               disabled={!isClickable || saving}
-              onClick={handleConnect}
+              onClick={() => void handleConnect()}
               className="h-11 px-5"
             >
               {saving ? 'linking…' : 'link account'}

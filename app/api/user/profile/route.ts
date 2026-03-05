@@ -31,16 +31,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid json body' }, { status: 400 });
   }
 
-  const chessUsername = (body as { chessUsername?: unknown }).chessUsername;
+  const parsed = body as {
+    chessUsername?: unknown;
+    targetRating?: unknown;
+    timePreference?: unknown;
+    experience?: unknown;
+    selfReportedWeakness?: unknown;
+  };
+
+  const chessUsername = parsed.chessUsername;
   if (typeof chessUsername !== 'string' || !chessUsername.trim()) {
     return NextResponse.json({ error: 'chessUsername is required' }, { status: 400 });
   }
+
+  const setFields: Record<string, unknown> = {
+    clerkUserId: userId,
+    chessUsername: chessUsername.trim(),
+    updatedAt: new Date(),
+  };
+
+  if (typeof parsed.targetRating === 'number') setFields.targetRating = parsed.targetRating;
+  if (typeof parsed.timePreference === 'string') setFields.timePreference = parsed.timePreference;
+  if (typeof parsed.experience === 'string') setFields.experience = parsed.experience;
+  if (typeof parsed.selfReportedWeakness === 'string') setFields.selfReportedWeakness = parsed.selfReportedWeakness;
 
   await connectDB();
 
   await UserProfile.findOneAndUpdate(
     { clerkUserId: userId },
-    { clerkUserId: userId, chessUsername: chessUsername.trim(), updatedAt: new Date() },
+    { $set: setFields },
     { upsert: true },
   );
 

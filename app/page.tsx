@@ -12,6 +12,7 @@ interface HomeProps {
   searchParams: {
     year?: string;
     month?: string;
+    tab?: string;
   };
 }
 
@@ -34,6 +35,7 @@ export default async function Home({ searchParams }: HomeProps) {
             userName={profile.chessUsername}
             year={parseIntParam(searchParams.year)}
             month={parseIntParam(searchParams.month)}
+            tab={searchParams.tab ?? 'coach'}
             basePath="/"
           />
         );

@@ -136,6 +136,11 @@ export interface IUserProfile extends Document {
   plan: 'free' | 'paid';
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
+  // onboarding answers (all optional — user may skip)
+  targetRating?: number;
+  timePreference?: 'bullet' | 'blitz' | 'rapid' | 'classical';
+  experience?: 'beginner' | 'intermediate' | 'experienced';
+  selfReportedWeakness?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -146,6 +151,10 @@ const UserProfileSchema = new Schema<IUserProfile>({
   plan: { type: String, enum: ['free', 'paid'], default: 'free' },
   stripeCustomerId: { type: String },
   stripeSubscriptionId: { type: String },
+  targetRating: { type: Number },
+  timePreference: { type: String, enum: ['bullet', 'blitz', 'rapid', 'classical'] },
+  experience: { type: String, enum: ['beginner', 'intermediate', 'experienced'] },
+  selfReportedWeakness: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

@@ -1,55 +1,43 @@
 'use client';
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type { IGame } from '@/lib/interfaces/games';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry } from '@/lib/analysis/patternSummary';
 import { GamesTable } from '@/components/GamesTable';
 import { StatsBar } from '@/components/StatsBar';
-import { ProgressChart } from '@/components/ProgressChart';
+import { ProgressChart, type ChartPoint } from '@/components/ProgressChart';
 import { PatternSummary } from '@/components/PatternSummary';
+import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
+import { RatingHeroCard } from '@/components/RatingHeroCard';
+import { CoachBanner } from '@/components/CoachBanner';
 
-type Tab = 'games' | 'progress';
+type Tab = 'coach' | 'progress' | 'games' | 'profile' | 'settings';
 
 interface Props {
-  // games tab
   games: IGame[];
   userName: string;
   archiveYear: number;
   archiveMonth: number;
   analyzedUuidsList: string[]; // array — Set can't cross server/client boundary
   errorMessage: string | null;
-  // progress tab
   progressPoints: ProgressPoint[];
   patternEntries: PatternSummaryEntry[];
-  // false = public browse mode (no analyze buttons, no personal data)
+  drillMarkers: number[]; // unix timestamps (day-level) when user drilled
   isOwner: boolean;
+  activeTab: string;
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
-        active
-          ? 'border-primary text-foreground'
-          : 'border-transparent text-muted-foreground hover:text-foreground',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  );
-}
+const OWNER_TABS: { key: Tab; label: string }[] = [
+  { key: 'coach',    label: 'Coach'      },
+  { key: 'progress', label: 'Progress'   },
+  { key: 'games',    label: 'Games'      },
+  { key: 'profile',  label: 'My Profile' },
+  { key: 'settings', label: 'Settings'   },
+];
 
 export function UserPageTabs({
   games,
@@ -60,28 +48,176 @@ export function UserPageTabs({
   errorMessage,
   progressPoints,
   patternEntries,
+  drillMarkers,
   isOwner,
+  activeTab,
 }: Props) {
-  const [tab, setTab] = useState<Tab>('games');
+  const searchParams = useSearchParams();
+  const VALID_TABS = OWNER_TABS.map(t => t.key);
+  const tab: Tab = (VALID_TABS.includes(activeTab as Tab) ? activeTab : 'coach') as Tab;
   const analyzedUuids = new Set(analyzedUuidsList);
+
+  // count rated games per time class → default to the most-played one
+  const tcCounts: Record<string, number> = {};
+  games.filter(g => g.rated).forEach(g => {
+    tcCounts[g.timeClass] = (tcCounts[g.timeClass] ?? 0) + 1;
+  });
+  // sorted descending by count so default is the most-played time class
+  const availableTcs = Object.keys(tcCounts).sort((a, b) => tcCounts[b] - tcCounts[a]);
+  const [selectedTc, setSelectedTc] = useState<string>(() => availableTcs[0] ?? 'blitz');
+
+  // build tab href preserving current year/month params
+  function tabHref(key: string): string {
+    const params = new URLSearchParams({ tab: key });
+    const year = searchParams.get('year');
+    const month = searchParams.get('month');
+    if (year) params.set('year', year);
+    if (month) params.set('month', month);
+    return `/?${params.toString()}`;
+  }
   const hasInsights = progressPoints.length > 0;
+
+  // merge all games' ratings with analysis data — filtered to selected time class
+  const analysisMap = new Map(progressPoints.map(p => [p.gameUuid, p]));
+  const allChartPoints: ChartPoint[] = games
+    .filter(g => g.rated && g.timeClass === selectedTc)
+    .map(g => {
+      const rating = g.isWhite ? g.players.white.rating : g.players.black.rating;
+      const result: 'win' | 'loss' | 'draw' = g.isWon ? 'win' : g.isDraw ? 'draw' : 'loss';
+      const analyzed = analysisMap.get(g.uuid);
+      return {
+        date: g.endTime,
+        rating,
+        result,
+        ...(analyzed ? { accuracy: analyzed.accuracy, blunders: analyzed.blunders, mistakes: analyzed.mistakes } : {}),
+      };
+    })
+    .filter(p => p.rating > 0)
+    .sort((a, b) => a.date - b.date);
 
   return (
     <div className="space-y-6">
       {/* tab strip */}
-      <div className="flex gap-1 border-b">
-        <TabButton active={tab === 'games'} onClick={() => setTab('games')}>
-          games
-        </TabButton>
-        {hasInsights && (
-          <TabButton active={tab === 'progress'} onClick={() => setTab('progress')}>
-            progress
-          </TabButton>
-        )}
+      <div className="flex gap-0.5 border-b overflow-x-auto">
+        {(isOwner ? OWNER_TABS : [{ key: 'games' as Tab, label: 'Games' }]).map(({ key, label }) => (
+          <Link
+            key={key}
+            href={tabHref(key)}
+            className={[
+              'px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+              tab === key
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            ].join(' ')}
+          >
+            {label}
+          </Link>
+        ))}
       </div>
 
-      {/* games tab */}
-      {tab === 'games' && (
+      {/* ── Coach tab ── */}
+      {tab === 'coach' && isOwner && (
+        <div className="space-y-6">
+          {hasInsights ? (
+            <>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <RatingHeroCard progressPoints={progressPoints} />
+                {patternEntries[0] && (
+                  <CoachBanner topPattern={patternEntries[0]} totalGames={progressPoints.length} />
+                )}
+              </div>
+              <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
+            </>
+          ) : (
+            <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+              <div className="flex flex-col items-center text-center px-8 py-14 space-y-6">
+                {/* bouncing chess piece */}
+                <motion.div
+                  animate={{ y: [0, -14, 0] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                  className="text-7xl select-none"
+                >
+                  ♟
+                </motion.div>
+
+                <div className="space-y-2 max-w-sm">
+                  <h2 className="text-xl font-bold">your coach is waiting</h2>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    analyze a game and unlock your personal coaching plan — see your patterns,
+                    prove your progress, and sharpen the skills that matter most.
+                  </p>
+                </div>
+
+                {/* feature pills */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {['📊 track your patterns', '📈 prove you\'re improving', '🎯 targeted drills'].map(f => (
+                    <motion.span
+                      key={f}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.15 * ['📊 track your patterns', '📈 prove you\'re improving', '🎯 targeted drills'].indexOf(f) }}
+                      className="px-3 py-1 rounded-full bg-muted text-xs font-medium text-muted-foreground"
+                    >
+                      {f}
+                    </motion.span>
+                  ))}
+                </div>
+
+                <Link
+                  href={tabHref('games')}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  analyze your first game →
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Progress tab ── */}
+      {tab === 'progress' && isOwner && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-2xl border bg-card p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-4 mb-1">
+              <h2 className="text-sm font-semibold">your progress</h2>
+              {/* time-class filter pills */}
+              {availableTcs.length > 1 && (
+                <div className="flex gap-1 flex-wrap justify-end">
+                  {availableTcs.map(tc => (
+                    <button
+                      key={tc}
+                      onClick={() => setSelectedTc(tc)}
+                      className={[
+                        'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors capitalize',
+                        selectedTc === tc
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:text-foreground',
+                      ].join(' ')}
+                    >
+                      {tc} <span className="opacity-60">({tcCounts[tc]})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              {selectedTc} — accuracy &amp; rating across {allChartPoints.filter(p => p.accuracy != null).length} analyzed game
+              {allChartPoints.filter(p => p.accuracy != null).length !== 1 ? 's' : ''} of {allChartPoints.length} total
+              <span className="inline-flex gap-3 ml-2">
+                <span><span className="text-emerald-400">●</span> win</span>
+                <span><span className="text-red-400">●</span> loss</span>
+                <span><span className="text-slate-400">●</span> draw</span>
+              </span>
+            </p>
+            <ProgressChart data={allChartPoints} drillMarkers={drillMarkers} />
+          </section>
+          <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
+        </div>
+      )}
+
+      {/* ── Games tab ── */}
+      {(tab === 'games' || !isOwner) && (
         <>
           {errorMessage ? (
             <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-3">
@@ -90,12 +226,6 @@ export function UserPageTabs({
               <div className="text-xs text-muted-foreground">
                 tip: if the username exists, chess.com might be rate-limiting or temporarily down.
               </div>
-              <Link
-                href="/"
-                className="inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
-              >
-                ← back to home
-              </Link>
             </div>
           ) : games.length === 0 ? (
             <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-3">
@@ -103,12 +233,6 @@ export function UserPageTabs({
               <div className="text-sm text-muted-foreground">
                 this user may have no games in the selected archive month.
               </div>
-              <Link
-                href="/"
-                className="inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
-              >
-                ← back to home
-              </Link>
             </div>
           ) : (
             <>
@@ -126,30 +250,25 @@ export function UserPageTabs({
         </>
       )}
 
-      {/* progress tab */}
-      {tab === 'progress' && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="rounded-2xl border bg-card p-6 shadow-sm">
-            <h2 className="text-sm font-semibold mb-1">your progress</h2>
-            <p className="text-xs text-muted-foreground mb-4">
-              accuracy &amp; rating across {progressPoints.length} analyzed game
-              {progressPoints.length !== 1 ? 's' : ''}
-              <span className="inline-flex gap-3 ml-2">
-                <span>
-                  <span className="text-emerald-400">●</span> win
-                </span>
-                <span>
-                  <span className="text-red-400">●</span> loss
-                </span>
-                <span>
-                  <span className="text-slate-400">●</span> draw
-                </span>
-              </span>
-            </p>
-            <ProgressChart data={progressPoints} />
-          </section>
+      {/* ── Profile tab ── */}
+      {tab === 'profile' && isOwner && (
+        <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4 max-w-md">
+          <h2 className="text-sm font-semibold">chess.com account</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">{userName}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">linked chess.com username</p>
+            </div>
+            <ChangeUsernameButton />
+          </div>
+        </div>
+      )}
 
-          <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
+      {/* ── Settings tab ── */}
+      {tab === 'settings' && isOwner && (
+        <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-2">
+          <h2 className="text-sm font-semibold">settings</h2>
+          <p className="text-sm text-muted-foreground">more options coming soon.</p>
         </div>
       )}
     </div>
