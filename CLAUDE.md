@@ -117,8 +117,8 @@ Opponent blunder count in narrative now correct.
 `GameReplay.tsx`: amber banner when `isStale`; "Re-analyze" button calls `handleAnalyze(force=true)`.
 
 ### backlog (after slices)
-6. **accuracy trend line in ProgressChart** — add accuracy series to recharts dual-axis chart; powered by `buildProgressPoint` after Slice 1 fix
-7. **"practice this now" CTA** — button at bottom of AnalysisPanel → /drills
+6. ~~**accuracy trend line in ProgressChart**~~ ✅ `ae56b54` — uses stored `GameAnalysis.accuracy[playerSide]`; gated behind ≥3 analyzed games
+7. ~~**"practice this now" CTA**~~ ✅ `9b2a732` — "Practice now →" in AnalysisPanel when ≥1 player TP or pattern; routes to `/drills`
 8. **connect stripe** — add env vars: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `NEXT_PUBLIC_APP_URL`
 
 ---
