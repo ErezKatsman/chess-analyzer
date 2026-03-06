@@ -1,14 +1,15 @@
 // lib/analysis/progressUtils.ts
 // pure helpers for computing per-game progress metrics from stored GameAnalysis data.
 
-import { computeChesscomAccuracy } from './accuracy';
+import { computeAccuracyDebug, computeTrainingScore } from './accuracy';
 import type { PositionEval } from './stockfish';
 import type { TurningPoint } from '@/lib/interfaces/analysis';
 
 export type ProgressPoint = {
   gameUuid: string;
   date: number; // unix timestamp (seconds)
-  accuracy: number; // 0–100
+  accuracy: number;      // 0–100, chess.com formula — can collapse near 0 for beginners
+  trainingScore: number; // 0–100, linear friendlier metric (100 − avgCpLoss × 0.5)
   rating: number | null;
   result: 'win' | 'loss' | 'draw';
   blunders: number;
@@ -49,6 +50,7 @@ export function buildProgressPoint(
   evals: PositionEval[],
   turningPoints: TurningPoint[],
   storedAccuracy?: number,
+  storedAvgCpLoss?: number,  // from GameAnalysis.avgCpLoss[side] — added in Slice A
 ): ProgressPoint | null {
   const headers = parsePgnHeaders(pgn);
   if (!headers.date) return null;
@@ -61,10 +63,18 @@ export function buildProgressPoint(
 
   const mine = turningPoints.filter((tp) => tp.side === playerSide);
 
+  // fromEvals is null only when both stored values are present; assertions below are safe
+  const fromEvals = (storedAccuracy != null && storedAvgCpLoss != null)
+    ? null
+    : computeAccuracyDebug(evals, playerSide);
+  const accuracy = storedAccuracy ?? fromEvals!.accuracy;
+  const cpLoss = storedAvgCpLoss ?? fromEvals!.avgCpLoss;
+
   return {
     gameUuid,
     date: headers.date,
-    accuracy: storedAccuracy ?? computeChesscomAccuracy(evals, playerSide),
+    accuracy,
+    trainingScore: computeTrainingScore(cpLoss),
     rating,
     result,
     blunders: mine.filter((tp) => tp.type === 'blunder').length,

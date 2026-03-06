@@ -12,6 +12,7 @@ import { UserPageTabs } from '@/components/UserPageTabs';
 import type { ProfileData } from '@/components/UserPageTabs';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { buildProgressPoint } from '@/lib/analysis/progressUtils';
+import { computeTrainingScore } from '@/lib/analysis/accuracy';
 import { aggregatePatterns } from '@/lib/analysis/patternSummary';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry, GamePatternEntry } from '@/lib/analysis/patternSummary';
@@ -71,6 +72,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
   let drillMarkers: number[] = []; // unix timestamps (day-level) when user practiced drills
   let profileData: ProfileData | null = null;
   let accuracyRecord: Record<string, { white: number; black: number }> = {};
+  let trainingScoreRecord: Record<string, { white: number; black: number }> = {};
 
   // only load personal analysis on the home dashboard, not on public browse pages
   if (userId && basePath === '/') {
@@ -79,7 +81,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
       const [allAnalyzed, drillDocs, profileDoc] = await Promise.all([
         GameAnalysis.find(
           { clerkUserId: userId },
-          { gameUuid: 1, pgn: 1, playerSide: 1, evals: 1, turningPoints: 1, patterns: 1, accuracy: 1, analyzedAt: 1 },
+          { gameUuid: 1, pgn: 1, playerSide: 1, evals: 1, turningPoints: 1, patterns: 1, accuracy: 1, avgCpLoss: 1, analyzedAt: 1 },
         ).lean(),
         DrillSession.find(
           { clerkUserId: userId, solved: true },
@@ -101,24 +103,32 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
 
       analyzedUuids = new Set(allAnalyzed.map((a) => a.gameUuid as string));
 
-      // build uuid → accuracy lookup for GamesTable badges
+      // build uuid → accuracy / training score lookups for GamesTable badges
       allAnalyzed.forEach((a) => {
         const acc = a.accuracy as { white: number; black: number } | undefined;
         if (acc) accuracyRecord[a.gameUuid as string] = acc;
+        const cpLoss = a.avgCpLoss as { white: number; black: number } | undefined;
+        if (cpLoss) {
+          trainingScoreRecord[a.gameUuid as string] = {
+            white: computeTrainingScore(cpLoss.white),
+            black: computeTrainingScore(cpLoss.black),
+          };
+        }
       });
 
       progressPoints = allAnalyzed
         .map((a) => {
           const side = a.playerSide as 'white' | 'black';
           const acc = a.accuracy as { white: number; black: number } | undefined;
-          const storedAccuracy = acc ? acc[side] : undefined;
+          const cpLoss = a.avgCpLoss as { white: number; black: number } | undefined;
           return buildProgressPoint(
             a.gameUuid as string,
             a.pgn as string,
             side,
             (a.evals ?? []) as PositionEval[],
             (a.turningPoints ?? []) as TurningPoint[],
-            storedAccuracy,
+            acc ? acc[side] : undefined,
+            cpLoss ? cpLoss[side] : undefined,
           );
         })
         .filter((p): p is ProgressPoint => p !== null);
@@ -193,6 +203,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
           activeTab={basePath === '/' ? tab : 'games'}
           profileData={profileData}
           accuracyRecord={accuracyRecord}
+          trainingScoreRecord={trainingScoreRecord}
         />
       </div>
     </main>

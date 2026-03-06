@@ -12,19 +12,24 @@ import {
   ReferenceLine,
 } from 'recharts';
 
-// ChartPoint covers all games (rating always present) + analyzed games (accuracy optional)
+// ChartPoint covers all games (rating always present) + analyzed games (accuracy/trainingScore optional)
 export type ChartPoint = {
-  date: number;       // unix timestamp seconds
-  rating: number;     // user rating at game time — available for all games
+  date: number;           // unix timestamp seconds
+  rating: number;         // user rating at game time — available for all games
   result: 'win' | 'loss' | 'draw';
-  accuracy?: number;  // only present for analyzed games
+  accuracy?: number;      // chess.com formula — only present for analyzed games
+  trainingScore?: number; // friendlier metric (100 − avgCpLoss × 0.5) — only present for analyzed games
   blunders?: number;
   mistakes?: number;
 };
 
+// metric selects which accuracy line to render; defaults to training score
+export type AccuracyMetric = 'training' | 'accuracy';
+
 interface Props {
   data: ChartPoint[];
   drillMarkers?: number[]; // unix timestamps (day-level) when user practiced drills
+  metric?: AccuracyMetric; // which metric line to show — defaults to 'training'
 }
 
 const RESULT_COLOR: Record<string, string> = {
@@ -51,17 +56,19 @@ function AccuracyDot(props: { cx?: number; cy?: number; payload?: ChartPoint }) 
   return <Dot cx={cx} cy={cy} r={5} fill={RESULT_COLOR[payload.result]} stroke="transparent" />;
 }
 
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payload: ChartPoint }[] }) {
+function CustomTooltip({ active, payload, metric }: { active?: boolean; payload?: { payload: ChartPoint }[]; metric: AccuracyMetric }) {
   if (!active || !payload?.length) return null;
   const point = payload[0]?.payload;
+  const metricValue = metric === 'training' ? point.trainingScore : point.accuracy;
+  const metricLabel = metric === 'training' ? 'training score' : 'accuracy';
 
   return (
     <div className="rounded-lg border bg-card px-3 py-2 text-xs shadow-md space-y-1">
       <div className="font-medium">{formatDate(point.date)}</div>
       <div className="flex gap-3">
         <span>rating <span className="font-semibold text-foreground">{point.rating}</span></span>
-        {point.accuracy != null && (
-          <span>accuracy <span className="font-semibold text-foreground">{point.accuracy}%</span></span>
+        {metricValue != null && (
+          <span>{metricLabel} <span className="font-semibold text-foreground">{metricValue}%</span></span>
         )}
       </div>
       {point.blunders != null && (
@@ -77,7 +84,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payl
   );
 }
 
-export function ProgressChart({ data, drillMarkers = [] }: Props) {
+export function ProgressChart({ data, drillMarkers = [], metric = 'training' }: Props) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
@@ -86,9 +93,10 @@ export function ProgressChart({ data, drillMarkers = [] }: Props) {
     );
   }
 
+  const metricKey = metric === 'training' ? 'trainingScore' : 'accuracy';
   const sorted = [...data].sort((a, b) => a.date - b.date);
-  const accuracyPoints = sorted.filter(p => p.accuracy != null);
-  const hasAccuracy = accuracyPoints.length >= 3;
+  const metricPoints = sorted.filter(p => p[metricKey] != null);
+  const hasAccuracy = metricPoints.length >= 3;
 
   return (
     <>
@@ -135,7 +143,7 @@ export function ProgressChart({ data, drillMarkers = [] }: Props) {
             label={{ value: '⚡', position: 'insideTopLeft', fontSize: 10, fill: '#f59e0b' }}
           />
         ))}
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<CustomTooltip metric={metric} />} />
         {/* rating line — solid, all games, dots colored by result */}
         <Line
           yAxisId="rating"
@@ -147,12 +155,12 @@ export function ProgressChart({ data, drillMarkers = [] }: Props) {
           activeDot={{ r: 5 }}
           isAnimationActive={false}
         />
-        {/* accuracy line — only appears when ≥3 analyzed games, connectNulls skips gaps */}
+        {/* metric line — only appears when ≥3 analyzed games, switches between trainingScore / accuracy */}
         {hasAccuracy && (
           <Line
             yAxisId="acc"
             type="monotone"
-            dataKey="accuracy"
+            dataKey={metricKey}
             stroke="hsl(var(--primary))"
             strokeWidth={2}
             connectNulls={false}
@@ -165,8 +173,8 @@ export function ProgressChart({ data, drillMarkers = [] }: Props) {
     </ResponsiveContainer>
     {!hasAccuracy && (
       <p className="text-sm text-muted-foreground text-center py-2">
-        analyze at least 3 games to see your accuracy trend
-        {accuracyPoints.length > 0 ? ` — ${accuracyPoints.length} of 3 analyzed` : ''}
+        analyze at least 3 games to see your progress trend
+        {metricPoints.length > 0 ? ` — ${metricPoints.length} of 3 analyzed` : ''}
       </p>
     )}
     </>

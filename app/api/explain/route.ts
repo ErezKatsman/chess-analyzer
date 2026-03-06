@@ -103,6 +103,20 @@ Return ONLY a valid JSON array with this shape (no markdown, no extra text):
       return NextResponse.json({ explanations: [] });
     }
 
+    // audit: verify model returned ids matching what we sent; filter out strays
+    const allowedIds = new Set(pointsToExplain.map((tp) => `${tp.moveNumber}-${tp.side}`));
+    const returnedIds = new Set(explanations.map((e) => e.id));
+    const extraIds = Array.from(returnedIds).filter((id) => !allowedIds.has(id));
+    const missingIds = Array.from(allowedIds).filter((id) => !returnedIds.has(id));
+    console.warn('[explain] id audit:', {
+      allowed: allowedIds.size,
+      returned: returnedIds.size,
+      extra: extraIds,
+      missing: missingIds,
+    });
+    // drop explanations whose id was not in the request — avoids stale or hallucinated entries
+    explanations = explanations.filter((e) => allowedIds.has(e.id));
+
     // persist to mongodb so future loads skip claude entirely
     if (userId && gameUuid && explanations.length > 0) {
       await connectDB();

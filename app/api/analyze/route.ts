@@ -5,7 +5,7 @@ import path from 'path';
 import { auth } from '@clerk/nextjs/server';
 import { getParsedMovesFromPgn } from '@/lib/chess/moves';
 import { evaluateFens } from '@/lib/analysis/stockfish';
-import { computeChesscomAccuracy } from '@/lib/analysis/accuracy';
+import { computeAccuracyDebug } from '@/lib/analysis/accuracy';
 import { computeTurningPoints } from '@/lib/analysis/insights';
 import { detectPatterns } from '@/lib/analysis/patterns';
 import { connectDB } from '@/lib/db/mongo';
@@ -181,11 +181,50 @@ export async function POST(request: Request) {
       : allTurningPoints;
     const patterns = detectPatterns(moves, rawEvals, playerTurningPoints);
 
-    // compute per-side accuracy scores from the eval array
-    const accuracy = {
-      white: computeChesscomAccuracy(evals, 'white'),
-      black: computeChesscomAccuracy(evals, 'black'),
+    // computeAccuracyDebug returns both accuracy + avgCpLoss in one pass — no need to call twice
+    const whiteDebug = computeAccuracyDebug(evals, 'white');
+    const blackDebug = computeAccuracyDebug(evals, 'black');
+    const accuracy = { white: whiteDebug.accuracy, black: blackDebug.accuracy };
+    const avgCpLoss = { white: whiteDebug.avgCpLoss, black: blackDebug.avgCpLoss };
+
+    // accuracy sanity log — surfaces collapse-to-zero bugs without changing the formula
+    const hasMate = evals.some((e) => e.mate !== null);
+    // computes per-move capped losses for one side — called only when SUSPECT fires
+    const sideDebugStats = (side: 'white' | 'black') => {
+      const sign = side === 'white' ? 1 : -1;
+      const losses: number[] = [];
+      let missingEvals = false;
+      for (let p = 1; p < evals.length; p++) {
+        if (side === 'white' && p % 2 !== 1) continue;
+        if (side === 'black' && p % 2 !== 0) continue;
+        if (evals[p - 1].cp === null && evals[p - 1].mate === null) { missingEvals = true; continue; }
+        if (evals[p].cp === null && evals[p].mate === null) { missingEvals = true; continue; }
+        const before = sign * (evals[p - 1].cp ?? ((evals[p - 1].mate ?? 1) > 0 ? 2000 : -2000));
+        const after = sign * (evals[p].cp ?? ((evals[p].mate ?? 1) > 0 ? 2000 : -2000));
+        losses.push(Math.min(Math.max(0, before - after), 1000));
+      }
+      const moveCount = losses.length;
+      const avg = moveCount > 0 ? losses.reduce((a, b) => a + b, 0) / moveCount : 0;
+      return {
+        moveCount,
+        avgCpLoss: Math.round(avg * 10) / 10,
+        minCpLoss: moveCount > 0 ? losses.reduce((a, b) => Math.min(a, b), Infinity) : 0,
+        maxCpLoss: moveCount > 0 ? losses.reduce((a, b) => Math.max(a, b), -Infinity) : 0,
+        missingEvals,
+      };
     };
+    (['white', 'black'] as const).forEach((side) => {
+      const acc = accuracy[side];
+      const cpLoss = avgCpLoss[side];
+      // formula zero-crossing: 103.1668*exp(-0.04354*x)-3.1669=0 → x≈80cp
+      // acc=0 is expected for avgCpLoss≥80; flag only when loss is well below that
+      const suspect = acc <= 1 && cpLoss < 70 && !hasMate;
+      console.warn(
+        `[analyze] accuracy ${side}: acc=${acc} avgCpLoss=${cpLoss}` +
+          (suspect ? ' ⚠️ SUSPECT' : ''),
+      );
+      if (suspect) console.warn('[analyze] suspect detail:', sideDebugStats(side));
+    });
 
     // save to mongodb so future loads are instant
     if (gameUuid) {
@@ -200,6 +239,7 @@ export async function POST(request: Request) {
           turningPoints: allTurningPoints,
           patterns,
           accuracy,
+          avgCpLoss,
           analysisVersion: ANALYSIS_VERSION,
           analyzedAt: new Date(),
         },

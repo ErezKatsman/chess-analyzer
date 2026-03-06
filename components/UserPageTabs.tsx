@@ -9,7 +9,7 @@ import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry } from '@/lib/analysis/patternSummary';
 import { GamesTable } from '@/components/GamesTable';
 import { StatsBar } from '@/components/StatsBar';
-import { ProgressChart, type ChartPoint } from '@/components/ProgressChart';
+import { ProgressChart, type ChartPoint, type AccuracyMetric } from '@/components/ProgressChart';
 import { PatternSummary } from '@/components/PatternSummary';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { RatingHeroCard } from '@/components/RatingHeroCard';
@@ -41,6 +41,8 @@ interface Props {
   profileData?: ProfileData | null;
   // per-game player accuracy: uuid → { white, black }
   accuracyRecord?: Record<string, { white: number; black: number }>;
+  // per-game player training score: uuid → { white, black } — derived from avgCpLoss
+  trainingScoreRecord?: Record<string, { white: number; black: number }>;
 }
 
 const OWNER_TABS: { key: Tab; label: string }[] = [
@@ -68,9 +70,12 @@ export function UserPageTabs({
   activeTab,
   profileData,
   accuracyRecord,
+  trainingScoreRecord,
 }: Props) {
   const searchParams = useSearchParams();
   const [showPaywall, setShowPaywall] = useState(false);
+  // shared metric toggle — controls both ProgressChart line and GamesTable badge
+  const [metric, setMetric] = useState<AccuracyMetric>('training');
   // null = not yet fetched or fetch failed; 0 = no drills due; >0 = show badge
   const [dueCount, setDueCount] = useState<number | null>(null);
 
@@ -121,7 +126,7 @@ export function UserPageTabs({
         date: g.endTime,
         rating,
         result,
-        ...(analyzed ? { accuracy: analyzed.accuracy, blunders: analyzed.blunders, mistakes: analyzed.mistakes } : {}),
+        ...(analyzed ? { accuracy: analyzed.accuracy, trainingScore: analyzed.trainingScore, blunders: analyzed.blunders, mistakes: analyzed.mistakes } : {}),
       };
     })
     .filter(p => p.rating > 0)
@@ -227,36 +232,53 @@ export function UserPageTabs({
           <section className="rounded-2xl border bg-card p-6 shadow-sm">
             <div className="flex items-start justify-between gap-4 mb-1">
               <h2 className="text-sm font-semibold">your progress</h2>
-              {/* time-class filter pills */}
-              {availableTcs.length > 1 && (
-                <div className="flex gap-1 flex-wrap justify-end">
-                  {availableTcs.map(tc => (
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {/* metric toggle — shared with Games tab badge */}
+                <div className="flex items-center rounded-full border p-0.5 text-xs">
+                  {(['training', 'accuracy'] as const).map(m => (
                     <button
-                      key={tc}
-                      onClick={() => setSelectedTc(tc)}
+                      key={m}
+                      onClick={() => setMetric(m)}
                       className={[
-                        'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors capitalize',
-                        selectedTc === tc
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground hover:text-foreground',
+                        'px-2.5 py-0.5 rounded-full font-medium transition-colors',
+                        metric === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
                       ].join(' ')}
                     >
-                      {tc} <span className="opacity-60">({tcCounts[tc]})</span>
+                      {m === 'training' ? 'Training score' : 'Accuracy'}
                     </button>
                   ))}
                 </div>
-              )}
+                {/* time-class filter pills */}
+                {availableTcs.length > 1 && (
+                  <div className="flex gap-1 flex-wrap justify-end">
+                    {availableTcs.map(tc => (
+                      <button
+                        key={tc}
+                        onClick={() => setSelectedTc(tc)}
+                        className={[
+                          'px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors capitalize',
+                          selectedTc === tc
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground hover:text-foreground',
+                        ].join(' ')}
+                      >
+                        {tc} <span className="opacity-60">({tcCounts[tc]})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>{/* end metric + time-class controls */}
             </div>
             <p className="text-xs text-muted-foreground mb-4">
-              {selectedTc} — accuracy &amp; rating across {allChartPoints.filter(p => p.accuracy != null).length} analyzed game
-              {allChartPoints.filter(p => p.accuracy != null).length !== 1 ? 's' : ''} of {allChartPoints.length} total
+              {selectedTc} — {metric === 'training' ? 'training score' : 'accuracy'} &amp; rating across {allChartPoints.filter(p => p.trainingScore != null).length} analyzed game
+              {allChartPoints.filter(p => p.trainingScore != null).length !== 1 ? 's' : ''} of {allChartPoints.length} total
               <span className="inline-flex gap-3 ml-2">
                 <span><span className="text-emerald-400">●</span> win</span>
                 <span><span className="text-red-400">●</span> loss</span>
                 <span><span className="text-slate-400">●</span> draw</span>
               </span>
             </p>
-            <ProgressChart data={allChartPoints} drillMarkers={drillMarkers} />
+            <ProgressChart data={allChartPoints} drillMarkers={drillMarkers} metric={metric} />
           </section>
           <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
         </div>
@@ -290,6 +312,8 @@ export function UserPageTabs({
                 archiveMonth={archiveMonth}
                 analyzedUuids={analyzedUuids}
                 accuracyRecord={accuracyRecord}
+                trainingScoreRecord={trainingScoreRecord}
+                metric={metric}
                 isOwner={isOwner}
               />
             </>

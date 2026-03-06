@@ -25,11 +25,15 @@ type GamesTableProps = {
   analyzedUuids?: Set<string>;
   // per-game accuracy: uuid → { white, black } — from stored GameAnalysis
   accuracyRecord?: Record<string, { white: number; black: number }>;
+  // per-game training score: uuid → { white, black } — derived from avgCpLoss at server time
+  trainingScoreRecord?: Record<string, { white: number; black: number }>;
+  // which metric to display in the badge — matches the shared Progress tab toggle
+  metric?: 'training' | 'accuracy';
   // false = public browse mode — no analyze button, just chess.com link
   isOwner?: boolean;
 };
 
-export function GamesTable({ userName, games, archiveYear, archiveMonth, analyzedUuids, accuracyRecord, isOwner = false }: GamesTableProps) {
+export function GamesTable({ userName, games, archiveYear, archiveMonth, analyzedUuids, accuracyRecord, trainingScoreRecord, metric = 'training', isOwner = false }: GamesTableProps) {
   const sortedGames = [...games].sort((a, b) => b.endTime - a.endTime);
 
   return (
@@ -78,6 +82,13 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth, analyze
               const isAnalyzed = analyzedUuids?.has(game.uuid) ?? false;
               const accEntry = accuracyRecord?.[game.uuid];
               const playerAcc = accEntry ? (game.isWhite ? accEntry.white : accEntry.black) : null;
+              const tsEntry = trainingScoreRecord?.[game.uuid];
+              const playerTs = tsEntry ? (game.isWhite ? tsEntry.white : tsEntry.black) : null;
+              // which value + thresholds to show based on the shared metric toggle
+              const displayVal = metric === 'training' ? playerTs : playerAcc;
+              const displayLabel = metric === 'training' ? 'score' : 'acc';
+              const greenAt = metric === 'training' ? 70 : 85;
+              const yellowAt = metric === 'training' ? 50 : 70;
 
               return (
                 <TableRow
@@ -171,19 +182,19 @@ export function GamesTable({ userName, games, archiveYear, archiveMonth, analyze
                               ✓ analyzed
                             </span>
                           )}
-                          {playerAcc !== null && (
+                          {displayVal !== null && (
                             <span
                               className={[
                                 'text-[10px] font-semibold tabular-nums',
-                                playerAcc >= 85
+                                displayVal >= greenAt
                                   ? 'text-green-600 dark:text-green-400'
-                                  : playerAcc >= 70
+                                  : displayVal >= yellowAt
                                     ? 'text-yellow-600 dark:text-yellow-500'
                                     : 'text-red-500',
                               ].join(' ')}
-                              title="your accuracy for this game"
+                              title={metric === 'training' ? 'your training score for this game' : 'your accuracy for this game'}
                             >
-                              {playerAcc}% acc
+                              {displayVal}% {displayLabel}
                             </span>
                           )}
                           <Link

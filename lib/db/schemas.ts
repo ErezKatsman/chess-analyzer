@@ -19,6 +19,8 @@ export interface IGameAnalysis extends Document {
   lessons: object[];
   // accuracy scores per side — computed from evals, stored for fast display in GamesTable
   accuracy?: { white: number; black: number };
+  // avg centipawn loss per side — stored to derive training score without re-reading evals
+  avgCpLoss?: { white: number; black: number };
   // increment when analysis logic changes to detect stale cached results
   analysisVersion?: number;
   analyzedAt: Date;
@@ -35,6 +37,10 @@ const GameAnalysisSchema = new Schema<IGameAnalysis>({
   explanations: { type: [Schema.Types.Mixed], default: [] },
   lessons: { type: [Schema.Types.Mixed], default: [] },
   accuracy: {
+    type: new Schema({ white: Number, black: Number }, { _id: false }),
+    default: undefined,
+  },
+  avgCpLoss: {
     type: new Schema({ white: Number, black: Number }, { _id: false }),
     default: undefined,
   },
