@@ -5,6 +5,7 @@ import path from 'path';
 import { auth } from '@clerk/nextjs/server';
 import { getParsedMovesFromPgn } from '@/lib/chess/moves';
 import { evaluateFens } from '@/lib/analysis/stockfish';
+import { computeChesscomAccuracy } from '@/lib/analysis/accuracy';
 import { computeTurningPoints } from '@/lib/analysis/insights';
 import { detectPatterns } from '@/lib/analysis/patterns';
 import { connectDB } from '@/lib/db/mongo';
@@ -13,33 +14,6 @@ import { GameAnalysis, UserQuota, UserProfile } from '@/lib/db/schemas';
 const FREE_LIMIT = 3;
 const ANALYSIS_VERSION = 1;
 
-// ── accuracy helpers (mirrors components/game-replay/utils.ts) ────────────────
-
-type EvalLike = { cp: number | null; mate: number | null };
-
-function evalToCp(e: EvalLike): number {
-  if (e.cp !== null) return e.cp;
-  if (e.mate !== null) return e.mate > 0 ? 2000 : -2000;
-  return 0;
-}
-
-// chess.com-style: 103.1668 * exp(-0.04354 * avgCpLoss) - 3.1669
-// individual move loss capped at 1000cp to avoid outlier distortion
-function computeAccuracy(evals: EvalLike[], side: 'white' | 'black'): number {
-  const sign = side === 'white' ? 1 : -1;
-  const losses: number[] = [];
-  for (let p = 1; p < evals.length; p++) {
-    if (side === 'white' && p % 2 !== 1) continue;
-    if (side === 'black' && p % 2 !== 0) continue;
-    const cpBefore = sign * evalToCp(evals[p - 1]);
-    const cpAfter = sign * evalToCp(evals[p]);
-    losses.push(Math.min(Math.max(0, cpBefore - cpAfter), 1000));
-  }
-  if (losses.length === 0) return 100;
-  const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
-  const raw = 103.1668 * Math.exp(-0.04354 * avg) - 3.1669;
-  return Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
-}
 
 function currentMonth(): string {
   const d = new Date();
@@ -199,8 +173,8 @@ export async function POST(request: Request) {
 
     // compute per-side accuracy scores from the eval array
     const accuracy = {
-      white: computeAccuracy(evals, 'white'),
-      black: computeAccuracy(evals, 'black'),
+      white: computeChesscomAccuracy(evals, 'white'),
+      black: computeChesscomAccuracy(evals, 'black'),
     };
 
     // save to mongodb so future loads are instant

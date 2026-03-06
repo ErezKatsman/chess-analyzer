@@ -1,6 +1,7 @@
 // lib/analysis/progressUtils.ts
 // pure helpers for computing per-game progress metrics from stored GameAnalysis data.
 
+import { computeChesscomAccuracy } from './accuracy';
 import type { PositionEval } from './stockfish';
 import type { TurningPoint } from '@/lib/interfaces/analysis';
 
@@ -21,8 +22,6 @@ type PgnHeaders = {
   result: '1-0' | '0-1' | '1/2-1/2' | null;
 };
 
-// treat forced mate as large centipawn value for loss calculation
-const MATE_CP = 2000;
 
 function parsePgnHeaders(pgn: string): PgnHeaders {
   const dateMatch = pgn.match(/\[Date\s+"(\d{4})\.(\d{2})\.(\d{2})"\]/);
@@ -42,35 +41,6 @@ function parsePgnHeaders(pgn: string): PgnHeaders {
   };
 }
 
-function toCp(e: PositionEval): number {
-  if (e.cp !== null) return e.cp;
-  if (e.mate !== null) return e.mate > 0 ? MATE_CP : -MATE_CP;
-  return 0;
-}
-
-// average centipawn loss for the player's moves → accuracy score 0–100
-export function computeAccuracy(evals: PositionEval[], playerSide: 'white' | 'black'): number {
-  const sign = playerSide === 'white' ? 1 : -1;
-  // white moves at even indices (0,2,4…), black at odd (1,3,5…)
-  const startPly = playerSide === 'white' ? 0 : 1;
-
-  let totalLoss = 0;
-  let count = 0;
-
-  for (let i = startPly; i + 1 < evals.length; i += 2) {
-    const before = evals[i];
-    const after = evals[i + 1];
-    if (!before || !after) continue;
-
-    const cpBefore = sign * toCp(before);
-    const cpAfter = sign * toCp(after);
-    totalLoss += Math.max(0, cpBefore - cpAfter);
-    count++;
-  }
-
-  if (count === 0) return 100;
-  return Math.max(0, Math.min(100, Math.round(100 - totalLoss / count / 10)));
-}
 
 export function buildProgressPoint(
   gameUuid: string,
@@ -78,6 +48,7 @@ export function buildProgressPoint(
   playerSide: 'white' | 'black',
   evals: PositionEval[],
   turningPoints: TurningPoint[],
+  storedAccuracy?: number,
 ): ProgressPoint | null {
   const headers = parsePgnHeaders(pgn);
   if (!headers.date) return null;
@@ -93,7 +64,7 @@ export function buildProgressPoint(
   return {
     gameUuid,
     date: headers.date,
-    accuracy: computeAccuracy(evals, playerSide),
+    accuracy: storedAccuracy ?? computeChesscomAccuracy(evals, playerSide),
     rating,
     result,
     blunders: mine.filter((tp) => tp.type === 'blunder').length,

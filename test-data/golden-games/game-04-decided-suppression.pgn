@@ -1,0 +1,20 @@
+[Event "Online rapid"]
+[Site "chess.com"]
+[Date "2024.03.10"]
+[White "PlayerC"]
+[Black "PlayerD"]
+[Result "1-0"]
+[WhiteElo "1500"]
+[BlackElo "1400"]
+
+{ Scenario: black blunders badly on move 6 (loses queen for a bishop), giving
+  white a +600cp advantage. All subsequent moves happen in a decided position.
+  Expected: the move-6 blunder is the ONLY turning point; moves after move 7
+  should NOT produce new blunder/mistake TPs because |evalBefore| > 350cp.
+  This validates decided-position suppression (DECIDED_BLUNDER_CP = 350). }
+1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Bc4 Qb6 7. Nxf7 Kxf7
+8. Bxg8+ Rxg8 9. Qf3+ Kg6 10. O-O Nc6 11. Qf5+ Kh6 12. Qh3+ Kg6 13. f4 Bg4
+14. Qg3 Kh6 15. f5 e5 16. Qh4+ Bh5 17. g4 Bg6 18. Be3 Qa5 19. Nd5 Kh5 20.
+Nf6+ gxf6 21. exf6 e4 22. g5 Bxf5 23. Rxf5+ Kh4 24. Raf1 Qb6+ 25. Kh1 d5
+26. Rxf8 Rxf8 27. Rxf8 e3 28. Bxb6 e2 29. Qxe4+ Kh5 30. Qf5+ Kh4 31. Qf4#
+1-0

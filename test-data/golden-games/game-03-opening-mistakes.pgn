@@ -1,0 +1,17 @@
+[Event "Online blitz"]
+[Site "chess.com"]
+[Date "2024.01.15"]
+[White "PlayerA"]
+[Black "PlayerB"]
+[Result "0-1"]
+[WhiteElo "1200"]
+[BlackElo "1100"]
+
+{ Scenario: white makes 2 critical opening blunders — move 3 (Kf2??) and move 4
+  (g3??). Move 3 instantly loses castling rights and exposes the king on f2.
+  Move 4 allows fxg3+ pawn check and then gxh2 winning the rook. By move 6
+  white is down a rook with no compensation. Expected: opening pattern fires for
+  white. Primary TPs at plies 5 (Kf2) and 7 (g3). Accuracy white: ~20-40%.
+  Accuracy black: ~70-85%. }
+1. e4 e5 2. f4 exf4 3. Kf2?? Qh4+ 4. g3?? fxg3+ 5. Ke2 gxh2 6. Rxh2 Bc5
+7. d3 d6 8. Nc3 Nf6 9. Nb5 O-O 10. Nxc7 Qxh2 0-1

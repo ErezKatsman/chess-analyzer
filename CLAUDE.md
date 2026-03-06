@@ -89,19 +89,15 @@ FLOW 6 — quota / paywall
 - `GameAnalysis.accuracy: { white, black }` computed in `api/analyze` at analysis time
 - `accuracyRecord` (Record<uuid, {white, black}>) passed server→client via `UserPageContent → UserPageTabs → GamesTable`
 - GamesTable shows color-coded `XX% acc` badge (green ≥85, yellow ≥70, red <70)
-- **known issue**: `progressUtils.ts:computeAccuracy` still uses a different (linear) formula — will be fixed in Slice 1
+- ✅ **Slice 1 done**: all callers now import from `lib/analysis/accuracy.ts` — single source of truth
 
 ---
 
 ## next priorities — 5 decided slices (implement in order)
 
-### slice 1 — unify accuracy formula
-**files:** `lib/analysis/accuracy.ts` (new) · `lib/analysis/progressUtils.ts` · `components/game-replay/utils.ts`
-- create `lib/analysis/accuracy.ts` with chess.com formula as single export: `computeChesscomAccuracy(evals, side)`
-- `progressUtils.ts`: replace linear formula with import; `buildProgressPoint` accepts optional `storedAccuracy?` arg to skip recomputation for games already in DB
-- `game-replay/utils.ts`: replace inline formula with same import
-- `api/analyze/route.ts`: replace inline duplicate with import
-- **why first**: ProgressChart is the paywall conversion moment — it currently shows wrong numbers
+### ~~slice 1 — unify accuracy formula~~ ✅ DONE
+`lib/analysis/accuracy.ts` created; `progressUtils.ts`, `game-replay/utils.ts`, `api/analyze/route.ts` all import from it.
+`buildProgressPoint` accepts optional `storedAccuracy?` to skip recomputation.
 
 ### slice 2 — store all TPs; filter at display time
 **files:** `app/api/analyze/route.ts` · `lib/analysis/insights.ts` · `components/game-replay/AnalysisPanel.tsx`

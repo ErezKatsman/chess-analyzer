@@ -1,0 +1,23 @@
+[Event "Online blitz"]
+[Site "chess.com"]
+[Date "2024.02.20"]
+[White "PlayerE"]
+[Black "PlayerF"]
+[Result "0-1"]
+[WhiteElo "1300"]
+[BlackElo "1250"]
+
+{ Scenario: near-equal game through the middlegame, then white blunders badly
+  in a pure K+P endgame (move 40 onwards, total material <= 3 pawns each).
+  Expected: endgame pattern fires. Blunder on move 40 IS a turning point
+  (position not yet decided at that point). Accuracy: white ~65-75% (endgame
+  blunder drags it down), black ~70-80%. }
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 O-O
+8. c3 d5 9. exd5 Nxd5 10. Nxe5 Nxe5 11. Rxe5 c6 12. d3 Bd6 13. Re1 Bf5
+14. Qf3 Qh4 15. g3 Qh3 16. Nd2 Rae8 17. Rxe8 Rxe8 18. Ne4 Be7 19. Be3 Nb6
+20. Nf2 Qh5 21. Qxh5 Bxh5 22. a4 Nd5 23. Bc2 bxa4 24. Bxa4 Nxe3 25. fxe3
+Bxf2+ 26. Kxf2 Bg6 27. Bc2 Bxc2 28. Rxc2 Re5 29. e4 f6 30. Ke3 Kf7 31. Kd4
+Re8 32. c4 Ke6 33. b4 g5 34. c5 f5 35. exf5+ Kxf5 36. d4 g4 37. d5 cxd5
+38. Kxd5 Rd8+ 39. Kc6 Rc8+ 40. Kb7 Rxc5 41. Rxc5+ Kxc5 42. Ka6 Kc4 43. Kxa5
+Kb3 44. Ka6 Kxb4 45. Ka5 Kc5 46. Ka6 b4 47. Ka5 b3 48. Ka6 b2 49. Ka7 b1=Q
+50. Ka6 Qb6# 0-1

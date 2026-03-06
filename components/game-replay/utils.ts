@@ -1,6 +1,7 @@
 // components/game-replay/utils.ts
 // pure helpers for the game-replay feature — no react dependencies
 
+import { computeChesscomAccuracy } from '@/lib/analysis/accuracy';
 import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
 import type { PlyEval } from './types';
 
@@ -26,20 +27,7 @@ function toCpVal(e: PlyEval): number {
 // caps individual move loss at 1000cp to avoid outlier distortion
 
 export function computeAccuracy(evals: PlyEval[], side: 'white' | 'black'): number {
-  const sign = side === 'white' ? 1 : -1;
-  const losses: number[] = [];
-  for (let p = 1; p < evals.length; p++) {
-    // white plays on odd plies (1,3,5...), black on even (2,4,6...)
-    if (side === 'white' && p % 2 !== 1) continue;
-    if (side === 'black' && p % 2 !== 0) continue;
-    const cpB = sign * toCpVal(evals[p - 1]);
-    const cpA = sign * toCpVal(evals[p]);
-    losses.push(Math.min(Math.max(0, cpB - cpA), 1000));
-  }
-  if (losses.length === 0) return 100;
-  const avg = losses.reduce((a, b) => a + b, 0) / losses.length;
-  const raw = 103.1668 * Math.exp(-0.04354 * avg) - 3.1669;
-  return Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
+  return computeChesscomAccuracy(evals, side);
 }
 
 export function computeMoveQuality(
