@@ -3,6 +3,7 @@
 // components/game-replay/AnalysisPanel.tsx
 // analysis tab content: stat pills, key errors with ai explanations, patterns detected
 
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import type { AnalysisState, BlunderExplanation, TurningPoint } from './types';
 import { tpBadgeClass, tpSymbol, patternTagClass } from './utils';
@@ -76,6 +77,14 @@ export function AnalysisPanel({
   playerSide,
   accuracy,
 }: AnalysisPanelProps) {
+  const router = useRouter();
+
+  // show CTA when there is at least one player TP or at least one detected pattern
+  const showPracticeCta =
+    analysisState.status === 'done' &&
+    (analysisState.result.turningPoints.filter((tp) => tp.side === playerSide).length > 0 ||
+      analysisState.result.patterns.length > 0);
+
   return (
     <div className="mt-3 grid max-h-[calc(100vh-300px)] gap-3 overflow-y-auto">
       {analysisState.status === 'done' ? (
@@ -243,6 +252,22 @@ export function AnalysisPanel({
                   <p className="mt-1 text-xs text-muted-foreground">{p.coachingHint}</p>
                 </div>
               ))}
+            </div>
+          ) : null}
+
+          {/* practice CTA — shown when there are drillable positions */}
+          {showPracticeCta ? (
+            <div className="border-t pt-4 grid gap-2">
+              <p className="text-sm text-muted-foreground text-center">
+                turn your mistakes into habits — drill the positions that hurt you
+              </p>
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => router.push('/drills')}
+              >
+                Practice now →
+              </Button>
             </div>
           ) : null}
         </>
