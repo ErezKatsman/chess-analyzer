@@ -101,34 +101,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'body must be { pgn: string }' }, { status: 400 });
   }
 
-  const { pgn, playerSide, gameUuid } = body as {
+  const { pgn, playerSide, gameUuid, force } = body as {
     pgn: string;
     playerSide?: 'white' | 'black';
     gameUuid?: string;
+    force?: boolean;
   };
 
   await connectDB();
 
   // check mongodb cache first — skip stockfish if already analyzed
+  // fall through when force=true AND cached version is stale (free re-analysis)
   if (gameUuid) {
     const cached = await GameAnalysis.findOne({ clerkUserId: userId, gameUuid }).lean();
     if (cached) {
-      return NextResponse.json({
-        evals: cached.evals,
-        turningPoints: cached.turningPoints,
-        patterns: cached.patterns,
-        explanations: cached.explanations ?? [],
-        accuracy: cached.accuracy ?? null,
-        fromCache: true,
-      });
+      const isStale = (cached.analysisVersion ?? 0) < ANALYSIS_VERSION;
+      if (!force || !isStale) {
+        return NextResponse.json({
+          evals: cached.evals,
+          turningPoints: cached.turningPoints,
+          patterns: cached.patterns,
+          explanations: cached.explanations ?? [],
+          accuracy: cached.accuracy ?? null,
+          fromCache: true,
+        });
+      }
+      // force=true + stale → fall through to re-run, quota bypassed below
     }
   }
 
   // paid users skip the monthly quota gate entirely
+  // stale re-analysis (force=true + gameUuid) is also free — no quota consumed
   const profile = await UserProfile.findOne({ clerkUserId: userId }, { plan: 1 }).lean();
   const isPaid = profile?.plan === 'paid';
+  const isStaleReanalysis = force === true && Boolean(gameUuid);
 
-  if (!isPaid) {
+  if (!isPaid && !isStaleReanalysis) {
     // check + increment quota (server-side, unenforced by client)
     const month = currentMonth();
     const quota = await UserQuota.findOneAndUpdate(

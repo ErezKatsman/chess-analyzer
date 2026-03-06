@@ -30,6 +30,7 @@ export function GameReplay({
   userName,
   uuid,
   initialAnalysis,
+  isStale,
   opponentName,
   resultText,
   gameUrl,
@@ -303,7 +304,7 @@ export function GameReplay({
     router.push(`/game?${params.toString()}`);
   };
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = async (force = false) => {
     if (analysis.status === 'loading') return;
     setAnalysis({ status: 'loading' });
 
@@ -311,7 +312,7 @@ export function GameReplay({
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pgn, playerSide: isWhite ? 'white' : 'black', gameUuid: uuid }),
+        body: JSON.stringify({ pgn, playerSide: isWhite ? 'white' : 'black', gameUuid: uuid, ...(force ? { force: true } : {}) }),
       });
 
       const data = (await res.json()) as {
@@ -577,7 +578,7 @@ export function GameReplay({
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={handleAnalyze}
+                  onClick={() => { void handleAnalyze(); }}
                   disabled={isAnalyzing}
                 >
                   {isAnalyzing ? 'analyzing…' : 'analyze'}
@@ -600,6 +601,22 @@ export function GameReplay({
         {analysis.status === 'error' ? (
           <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {analysis.message}
+          </div>
+        ) : null}
+
+        {/* stale analysis banner — shown when stored result is from an older pipeline version */}
+        {isStale && analysis.status !== 'loading' && analysis.status !== 'idle' ? (
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
+            <span>results from an older analysis — re-analyze free</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/40"
+              onClick={() => { void handleAnalyze(true); }}
+            >
+              re-analyze
+            </Button>
           </div>
         ) : null}
 

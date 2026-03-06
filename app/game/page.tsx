@@ -143,6 +143,8 @@ export default async function GamePage({ searchParams }: GamePageProps) {
   }));
 
   // load cached analysis server-side so already-analyzed games show results immediately
+  // keep in sync with CURRENT_VERSION in app/api/analyze/route.ts
+  const CURRENT_VERSION = 1;
   const { userId } = await auth();
   let initialAnalysis: {
     evals: PlyEval[];
@@ -150,13 +152,14 @@ export default async function GamePage({ searchParams }: GamePageProps) {
     patterns: Pattern[];
     explanations: BlunderExplanation[];
   } | null = null;
+  let isStale = false;
 
   if (userId) {
     try {
       await connectDB();
       const cached = await GameAnalysis.findOne(
         { clerkUserId: userId, gameUuid: uuid },
-        { evals: 1, turningPoints: 1, patterns: 1, explanations: 1 },
+        { evals: 1, turningPoints: 1, patterns: 1, explanations: 1, analysisVersion: 1 },
       ).lean();
 
       if (cached) {
@@ -166,6 +169,8 @@ export default async function GamePage({ searchParams }: GamePageProps) {
           patterns: (cached.patterns ?? []) as Pattern[],
           explanations: (cached.explanations ?? []) as BlunderExplanation[],
         };
+        // mark stale when stored version is behind the current pipeline version
+        isStale = ((cached.analysisVersion as number | undefined) ?? 0) < CURRENT_VERSION;
       }
     } catch {
       // non-fatal — page renders with analyze button if db unavailable
@@ -189,6 +194,7 @@ export default async function GamePage({ searchParams }: GamePageProps) {
           userName={userName}
           uuid={game.uuid}
           initialAnalysis={initialAnalysis}
+          isStale={isStale}
           opponentName={game.opponent.name}
           resultText={game.gameDetails.result}
           gameUrl={game.url}

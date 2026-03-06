@@ -50,4 +50,6 @@ export type GameReplayProps = {
   archiveYear?: number;
   archiveMonth?: number;
   pgn: string;
+  // true when the stored analysisVersion is older than CURRENT_VERSION
+  isStale?: boolean;
 };
