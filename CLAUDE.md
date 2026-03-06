@@ -93,40 +93,28 @@ FLOW 6 — quota / paywall
 
 ---
 
-## next priorities — 5 decided slices (implement in order)
+## completed slices — all 5 done ✅
 
 ### ~~slice 1 — unify accuracy formula~~ ✅ DONE
 `lib/analysis/accuracy.ts` created; `progressUtils.ts`, `game-replay/utils.ts`, `api/analyze/route.ts` all import from it.
 `buildProgressPoint` accepts optional `storedAccuracy?` to skip recomputation.
 
-### slice 2 — store all TPs; filter at display time
-**files:** `app/api/analyze/route.ts` · `lib/analysis/insights.ts` · `components/game-replay/AnalysisPanel.tsx`
-- `api/analyze/route.ts`: save ALL `allTurningPoints` to DB (remove playerSide filter before save); still pass player-filtered TPs to `detectPatterns` (patterns = your weaknesses only)
-- `lib/interfaces/analysis.ts` + `insights.ts`: add `bestMove?: string` (UCI from `evals[i].bestMove`) to `TurningPoint`; populate in `computeTurningPoints`
-- `AnalysisPanel.tsx`: fix `buildNarrative` — filter `tp.side === playerSide` for your errors, `tp.side !== playerSide` for opponent blunders (now populated correctly)
-- **why second**: opponent blunder count in narrative is always 0 currently; `bestMove` on TP unblocks better AI explanations
+### ~~slice 2 — store all TPs; filter at display time~~ ✅ DONE
+`allTurningPoints` (both sides) saved to DB; `playerTurningPoints` used only for `detectPatterns`.
+`TurningPoint.bestMove?: string` (UCI) added; populated from `evalBefore.bestMove` in `insights.ts`.
+`AnalysisPanel.tsx` + `GameReplay.tsx` filter by `tp.side === playerSide` at display time.
+Opponent blunder count in narrative now correct.
 
-### slice 3 — aggregation window (20 games / 60 days) + recency decay
-**files:** `lib/interfaces/analysis.ts` · `lib/analysis/patterns.ts` · `lib/analysis/patternSummary.ts`
-- `lib/interfaces/analysis.ts`: add `confidence?: number` to `Pattern`
-- `lib/analysis/patterns.ts`: compute `confidence = Math.min(1, matchingTPs / 3)` per pattern; attach to pattern object
-- `lib/analysis/patternSummary.ts`: accept `{ patterns, date }[]`; apply 60-day filter + 20-game cap (sort by date desc, slice 20); replace flat count with `score[tag] += confidence × (0.9 ** gameIndex)`; sort by score desc
-- `UserPageContent.tsx`: pass `analyzedAt` date alongside patterns so window filter can apply
-- **why third**: Coach tab top weakness is currently all-time flat count — a player who fixed opening 30 games ago still sees it as top weakness
+### ~~slice 3 — aggregation window (20 games / 60 days) + recency decay~~ ✅ DONE
+`Pattern.confidence` added; patterns.ts computes `min(1, matchingTPs/3)`; patternSummary.ts: 60-day window + 20-game cap + `score += confidence × 0.9^i`; UserPageContent passes `analyzedAt` + `selfReportedWeakness`.
 
-### slice 4 — two-box leitner SRS for drills
-**files:** `lib/db/schemas.ts` · `app/api/drills/attempt/route.ts` · `app/api/drills/generated/route.ts`
-- `lib/db/schemas.ts`: add `nextReviewAt?: Date` to `DrillSession`; add unique compound index `{ clerkUserId, gameUuid, moveNumber, side }` (prevents duplicate session bugs)
-- `app/api/drills/attempt/route.ts`: on solve → `nextReviewAt = now + 3 days`; on fail (2nd attempt) → `nextReviewAt = now + 6 hours`
-- `app/api/drills/generated/route.ts`: filter `{ $or: [{ nextReviewAt: null }, { nextReviewAt: { $lte: now } }] }`; add `dueCount` to response for dashboard badge
-- **why fourth**: drills without re-surfacing are one-shot interactions; Leitner creates the daily re-engagement habit
+### ~~slice 4 — two-box leitner SRS for drills~~ ✅ DONE
+`DrillSession.nextReviewAt?: Date` + unique compound index added; attempt route sets +3d on solve, +6h on fail≥2; generated route filters snoozed sessions (`nextReviewAt > now`) + returns `dueCount`.
 
-### slice 5 — stale analysis detection + free re-analysis
-**files:** `app/api/analyze/route.ts` · `app/game/page.tsx` · `components/GameReplay.tsx`
-- `api/analyze/route.ts`: accept `?force=true` query param; when `force=true` AND `cached.analysisVersion < CURRENT_VERSION`, skip quota check
-- `app/game/page.tsx`: read `analysisVersion` from cached analysis; pass `isStale = analysisVersion < CURRENT_VERSION` to `GameReplay`
-- `GameReplay.tsx`: if `isStale`, show subtle "results from older analysis — re-analyze free" banner with re-analyze button that adds `force=true`
-- **why last**: no urgency until we actually bump `ANALYSIS_VERSION` to 2
+### ~~slice 5 — stale analysis detection + free re-analysis~~ ✅ DONE
+`api/analyze/route.ts`: `force?: boolean` in body; bypasses quota when `force=true && cached.analysisVersion < CURRENT_VERSION`.
+`app/game/page.tsx`: reads `analysisVersion`, passes `isStale` to `GameReplay`.
+`GameReplay.tsx`: amber banner when `isStale`; "Re-analyze" button calls `handleAnalyze(force=true)`.
 
 ### backlog (after slices)
 6. **accuracy trend line in ProgressChart** — add accuracy series to recharts dual-axis chart; powered by `buildProgressPoint` after Slice 1 fix
@@ -140,11 +128,11 @@ FLOW 6 — quota / paywall
   - ✅ `accuracy: { white: number; black: number }` — chess.com formula, stored at analysis time
   - ✅ `analysisVersion: number` — current = 1; bump when pipeline changes
   - ✅ `playerSide: 'white' | 'black'` — stored at analysis time
-  - **TODO (Slice 2)**: turningPoints currently filtered to player's side before save — change to save all TPs; filter at display time
+  - ✅ turningPoints: ALL TPs (both sides) stored; filter by `tp.side` at display time
 - `UserQuota` — (clerkUserId, month) → usage count
 - `DrillSession` — (clerkUserId, gameUuid, moveNumber, side)
   - ✅ `solved: boolean`, `attempts: number`
-  - **TODO (Slice 4)**: add `nextReviewAt?: Date` + unique compound index
+  - ✅ `nextReviewAt?: Date` + unique compound index `{ clerkUserId, gameUuid, moveNumber, side }`
 - `CachedGames` — chess.com archive cache (TTL 1h)
 - `UserProfile` — clerkUserId → chessUsername + plan ('free'|'paid') + stripe IDs
   - optional: targetRating, timePreference, experience, selfReportedWeakness
