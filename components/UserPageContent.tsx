@@ -14,7 +14,7 @@ import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { buildProgressPoint } from '@/lib/analysis/progressUtils';
 import { aggregatePatterns } from '@/lib/analysis/patternSummary';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
-import type { PatternSummaryEntry } from '@/lib/analysis/patternSummary';
+import type { PatternSummaryEntry, GamePatternEntry } from '@/lib/analysis/patternSummary';
 import type { PositionEval } from '@/lib/analysis/stockfish';
 import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
 
@@ -79,7 +79,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
       const [allAnalyzed, drillDocs, profileDoc] = await Promise.all([
         GameAnalysis.find(
           { clerkUserId: userId },
-          { gameUuid: 1, pgn: 1, playerSide: 1, evals: 1, turningPoints: 1, patterns: 1, accuracy: 1 },
+          { gameUuid: 1, pgn: 1, playerSide: 1, evals: 1, turningPoints: 1, patterns: 1, accuracy: 1, analyzedAt: 1 },
         ).lean(),
         DrillSession.find(
           { clerkUserId: userId, solved: true },
@@ -119,8 +119,13 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
         )
         .filter((p): p is ProgressPoint => p !== null);
 
+      const gamePatternEntries: GamePatternEntry[] = allAnalyzed.map((a) => ({
+        patterns: (a.patterns ?? []) as Pattern[],
+        date: a.analyzedAt instanceof Date ? a.analyzedAt : new Date(a.analyzedAt as Date),
+      }));
       patternEntries = aggregatePatterns(
-        allAnalyzed.map((a) => (a.patterns ?? []) as Pattern[]),
+        gamePatternEntries,
+        profileData?.selfReportedWeakness,
       );
 
       // group drill sessions by day — one marker per day practiced

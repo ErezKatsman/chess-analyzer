@@ -43,6 +43,8 @@ export type Pattern = {
   title: string;
   evidenceMoves: number[];
   coachingHint: string;
+  // 0–1 signal strength: min(1, matchingTPs / 3) — used for cross-game recency-weighted scoring
+  confidence?: number;
 };
 
 export type DrillSeed = {

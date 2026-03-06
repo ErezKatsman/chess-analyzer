@@ -43,6 +43,7 @@ export function detectPatterns(
       evidenceMoves: openingTurns.map((tp) => tp.moveNumber),
       coachingHint:
         'Review opening principles: develop pieces to active squares, control the center, and castle early.',
+      confidence: Math.min(1, openingTurns.length / 3),
     });
   }
 
@@ -57,6 +58,7 @@ export function detectPatterns(
       evidenceMoves: blunders.map((tp) => tp.moveNumber),
       coachingHint:
         'Before each move scan for checks, captures, and threats. Practice tactical puzzles daily.',
+      confidence: Math.min(1, blunders.length / 3),
     });
   }
 
@@ -74,6 +76,7 @@ export function detectPatterns(
       evidenceMoves: endgameTurns.map((tp) => tp.moveNumber),
       coachingHint:
         'Study basic endgame techniques: king and pawn endgames, rook endings, and opposition.',
+      confidence: Math.min(1, endgameTurns.length / 3),
     });
   }
 
@@ -91,6 +94,7 @@ export function detectPatterns(
       evidenceMoves: kingSafetyTurns.map((tp) => tp.moveNumber),
       coachingHint:
         'Your king was uncastled when errors occurred. Castle early to keep your king protected.',
+      confidence: Math.min(1, kingSafetyTurns.length / 3),
     });
   }
 
@@ -111,6 +115,7 @@ export function detectPatterns(
       evidenceMoves: lateMistakes.map((tp) => tp.moveNumber),
       coachingHint:
         'Your accuracy dropped late in the game. Manage your clock and keep 30+ seconds per move.',
+      confidence: Math.min(1, lateMistakes.length / 3),
     });
   }
 
@@ -129,6 +134,7 @@ export function detectPatterns(
       evidenceMoves: strategicInaccuracies.map((tp) => tp.moveNumber),
       coachingHint:
         'Focus on positional play: improve piece coordination, control open files, and avoid weak pawns.',
+      confidence: Math.min(1, strategicInaccuracies.length / 3),
     });
   }
 
