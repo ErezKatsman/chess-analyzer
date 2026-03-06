@@ -87,9 +87,11 @@ export function ProgressChart({ data, drillMarkers = [] }: Props) {
   }
 
   const sorted = [...data].sort((a, b) => a.date - b.date);
-  const hasAccuracy = sorted.some(p => p.accuracy != null);
+  const accuracyPoints = sorted.filter(p => p.accuracy != null);
+  const hasAccuracy = accuracyPoints.length >= 3;
 
   return (
+    <>
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={sorted} margin={{ top: 8, right: 48, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -145,7 +147,7 @@ export function ProgressChart({ data, drillMarkers = [] }: Props) {
           activeDot={{ r: 5 }}
           isAnimationActive={false}
         />
-        {/* accuracy line — only appears for analyzed games, connectNulls skips gaps */}
+        {/* accuracy line — only appears when ≥3 analyzed games, connectNulls skips gaps */}
         {hasAccuracy && (
           <Line
             yAxisId="acc"
@@ -161,5 +163,12 @@ export function ProgressChart({ data, drillMarkers = [] }: Props) {
         )}
       </LineChart>
     </ResponsiveContainer>
+    {!hasAccuracy && (
+      <p className="text-sm text-muted-foreground text-center py-2">
+        analyze at least 3 games to see your accuracy trend
+        {accuracyPoints.length > 0 ? ` — ${accuracyPoints.length} of 3 analyzed` : ''}
+      </p>
+    )}
+    </>
   );
 }

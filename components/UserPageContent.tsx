@@ -108,15 +108,19 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
       });
 
       progressPoints = allAnalyzed
-        .map((a) =>
-          buildProgressPoint(
+        .map((a) => {
+          const side = a.playerSide as 'white' | 'black';
+          const acc = a.accuracy as { white: number; black: number } | undefined;
+          const storedAccuracy = acc ? acc[side] : undefined;
+          return buildProgressPoint(
             a.gameUuid as string,
             a.pgn as string,
-            a.playerSide as 'white' | 'black',
+            side,
             (a.evals ?? []) as PositionEval[],
             (a.turningPoints ?? []) as TurningPoint[],
-          ),
-        )
+            storedAccuracy,
+          );
+        })
         .filter((p): p is ProgressPoint => p !== null);
 
       const gamePatternEntries: GamePatternEntry[] = allAnalyzed.map((a) => ({
