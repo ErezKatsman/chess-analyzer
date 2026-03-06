@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -51,6 +51,9 @@ const OWNER_TABS: { key: Tab; label: string }[] = [
   { key: 'settings', label: 'Settings'   },
 ];
 
+// drills tab links out to /drills — separate route, not a dashboard sub-tab
+const DRILLS_HREF = '/drills';
+
 export function UserPageTabs({
   games,
   userName,
@@ -68,6 +71,20 @@ export function UserPageTabs({
 }: Props) {
   const searchParams = useSearchParams();
   const [showPaywall, setShowPaywall] = useState(false);
+  // null = not yet fetched or fetch failed; 0 = no drills due; >0 = show badge
+  const [dueCount, setDueCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    fetch('/api/drills/generated')
+      .then(r => r.json())
+      .then((data: { dueCount?: number }) => {
+        if (typeof data.dueCount === 'number') setDueCount(data.dueCount);
+      })
+      .catch(() => {
+        // silently ignore — badge just won't show
+      });
+  }, [isOwner]);
   const VALID_TABS = OWNER_TABS.map(t => t.key);
   const tab: Tab = (VALID_TABS.includes(activeTab as Tab) ? activeTab : 'coach') as Tab;
   const analyzedUuids = new Set(analyzedUuidsList);
@@ -128,6 +145,20 @@ export function UserPageTabs({
             {label}
           </Link>
         ))}
+        {/* drills tab — links to /drills (separate protected route) */}
+        {isOwner && (
+          <Link
+            href={DRILLS_HREF}
+            className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap inline-flex items-center"
+          >
+            Drills
+            {dueCount !== null && dueCount > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                {dueCount}
+              </span>
+            )}
+          </Link>
+        )}
       </div>
 
       {/* ── Coach tab ── */}
