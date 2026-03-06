@@ -147,6 +147,7 @@ export function computeTurningPoints(
       positionHint: evalBefore.fen,
       // uci of the move played — used by the drill intro to show what went wrong
       movePlayed: move.from + move.to + (move.promotion ?? ''),
+      bestMove: evalBefore.bestMove ?? undefined,
     });
   }
 

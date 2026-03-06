@@ -157,9 +157,9 @@ export function AnalysisPanel({
             })()}
           </div>
 
-          {/* blunder + mistake list with ai explanations */}
+          {/* blunder + mistake list with ai explanations — filtered to player's side only */}
           {analysisState.result.turningPoints.filter(
-            (tp) => tp.type === 'blunder' || tp.type === 'mistake',
+            (tp) => (tp.type === 'blunder' || tp.type === 'mistake') && tp.side === playerSide,
           ).length > 0 ? (
             <div className="grid gap-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
@@ -171,7 +171,7 @@ export function AnalysisPanel({
                 ) : null}
               </div>
               {analysisState.result.turningPoints
-                .filter((tp) => tp.type === 'blunder' || tp.type === 'mistake')
+                .filter((tp) => (tp.type === 'blunder' || tp.type === 'mistake') && tp.side === playerSide)
                 .map((tp) => {
                   const expId = `${tp.moveNumber}-${tp.side}`;
                   const exp = explanations.get(expId);

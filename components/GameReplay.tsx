@@ -118,8 +118,10 @@ export function GameReplay({
       return;
     }
 
+    // only request explanations for the player's own errors, not opponent's
+    const playerSide = isWhite ? 'white' : 'black';
     const blundersAndMistakes = turningPoints.filter(
-      (tp) => tp.type === 'blunder' || tp.type === 'mistake',
+      (tp) => (tp.type === 'blunder' || tp.type === 'mistake') && tp.side === playerSide,
     );
     if (blundersAndMistakes.length === 0) return;
 
@@ -214,11 +216,11 @@ export function GameReplay({
     return { blunder, mistake, inaccuracy };
   }, [analysis]);
 
-  // build drill list from blunders that have a bestMove from the engine
+  // build drill list from player's own blunders that have a bestMove from the engine
   const drills = React.useMemo(() => {
     if (analysis.status !== 'done') return [];
     return analysis.result.turningPoints
-      .filter((tp) => tp.type === 'blunder')
+      .filter((tp) => tp.type === 'blunder' && tp.side === (isWhite ? 'white' : 'black'))
       .flatMap((tp) => {
         // ply index of the position BEFORE the blunder
         const plyBefore = tp.side === 'white'

@@ -27,6 +27,8 @@ export type TurningPoint = {
   positionHint: string;
   // uci notation of the move that was actually played (e.g. "e2e4")
   movePlayed: string;
+  // uci best move from the engine at the position before this move (e.g. "d1d5")
+  bestMove?: string;
 };
 
 export type Pattern = {

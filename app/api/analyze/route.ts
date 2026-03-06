@@ -166,10 +166,12 @@ export async function POST(request: Request) {
     }));
 
     const allTurningPoints = computeTurningPoints(moves, rawEvals);
-    const turningPoints = playerSide
+    // patterns detect only the player's own weaknesses; save all TPs to DB so
+    // the narrative can count opponent blunders correctly at display time
+    const playerTurningPoints = playerSide
       ? allTurningPoints.filter((tp) => tp.side === playerSide)
       : allTurningPoints;
-    const patterns = detectPatterns(moves, rawEvals, turningPoints);
+    const patterns = detectPatterns(moves, rawEvals, playerTurningPoints);
 
     // compute per-side accuracy scores from the eval array
     const accuracy = {
@@ -187,7 +189,7 @@ export async function POST(request: Request) {
           pgn,
           playerSide: playerSide ?? 'white',
           evals,
-          turningPoints,
+          turningPoints: allTurningPoints,
           patterns,
           accuracy,
           analysisVersion: ANALYSIS_VERSION,
@@ -197,7 +199,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ evals, turningPoints, patterns, accuracy });
+    return NextResponse.json({ evals, turningPoints: allTurningPoints, patterns, accuracy });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'analysis failed';
     return NextResponse.json({ error: message }, { status: 500 });
