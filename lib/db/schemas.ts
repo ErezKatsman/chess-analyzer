@@ -78,6 +78,8 @@ export interface IDrillSession extends Document {
   solved: boolean;
   attempts: number;
   solvedAt: Date | null;
+  // leitner SRS: null = new drill (include immediately); date in future = snoozed; past = due
+  nextReviewAt?: Date;
   createdAt: Date;
 }
 
@@ -91,8 +93,15 @@ const DrillSessionSchema = new Schema<IDrillSession>({
   solved: { type: Boolean, default: false },
   attempts: { type: Number, default: 0 },
   solvedAt: { type: Date, default: null },
+  nextReviewAt: { type: Date, default: undefined },
   createdAt: { type: Date, default: Date.now },
 });
+
+// unique compound index — one session per (user, game, move, side)
+DrillSessionSchema.index(
+  { clerkUserId: 1, gameUuid: 1, moveNumber: 1, side: 1 },
+  { unique: true },
+);
 
 // ─── CachedGames ─────────────────────────────────────────────────────────────
 // caches the raw chess.com monthly archive response so we don't hammer their api.

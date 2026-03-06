@@ -31,13 +31,19 @@ export async function GET() {
 
   await connectDB();
 
-  const [games, solvedDrills] = await Promise.all([
+  const now = new Date();
+
+  const [games, snoozedDrills] = await Promise.all([
     GameAnalysis.find(
       { clerkUserId: userId },
       { gameUuid: 1, turningPoints: 1, evals: 1, patterns: 1 },
     ).lean(),
+    // snoozed = solved but not yet due, OR failed and nextReviewAt is in the future
     DrillSession.find(
-      { clerkUserId: userId, solved: true },
+      {
+        clerkUserId: userId,
+        nextReviewAt: { $gt: now },
+      },
       { gameUuid: 1, moveNumber: 1, side: 1 },
     ).lean(),
   ]);
@@ -67,9 +73,9 @@ export async function GET() {
   });
   const hasPatterns = tagCount.size > 0;
 
-  // build solved-drill exclusion set
-  const solvedKeys = new Set<string>();
-  solvedDrills.forEach(d => solvedKeys.add(`${d.gameUuid}-${d.moveNumber}-${d.side}`));
+  // build snoozed-drill exclusion set (nextReviewAt > now — not yet due)
+  const snoozedKeys = new Set<string>();
+  snoozedDrills.forEach(d => snoozedKeys.add(`${d.gameUuid}-${d.moveNumber}-${d.side}`));
 
   // collect blunders from games that match the top pattern
   const drills: GeneratedDrill[] = [];
@@ -86,7 +92,7 @@ export async function GET() {
     turningPoints
       .filter(tp => tp.type === 'blunder')
       .forEach(tp => {
-        if (solvedKeys.has(`${gameUuid}-${tp.moveNumber}-${tp.side}`)) return;
+        if (snoozedKeys.has(`${gameUuid}-${tp.moveNumber}-${tp.side}`)) return;
 
         // plyBefore: white blunder on move N = ply (N-1)*2; black = (N-1)*2+1
         const plyBefore = tp.side === 'white'
@@ -109,6 +115,9 @@ export async function GET() {
       });
   });
 
+  // dueCount = total drills available before the cap (useful for dashboard badge)
+  const dueCount = drills.length;
+
   // shuffle so repeated visits feel fresh, then cap at MAX_DRILLS
   const shuffled = drills.sort(() => Math.random() - 0.5).slice(0, MAX_DRILLS);
 
@@ -119,5 +128,6 @@ export async function GET() {
     topPatternTag: topTag,
     topPatternLabel,
     topPatternGameCount: topCount,
+    dueCount,
   });
 }

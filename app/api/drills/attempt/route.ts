@@ -42,6 +42,17 @@ export async function POST(request: Request) {
 
   await connectDB();
 
+  // leitner two-box SRS scheduling
+  // solve → review in 3 days; fail after ≥2 attempts → retry in 6 hours; otherwise no schedule yet
+  const isSolved = solved ?? false;
+  const attemptCount = attempts ?? 1;
+  let nextReviewAt: Date | undefined;
+  if (isSolved) {
+    nextReviewAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  } else if (attemptCount >= 2) {
+    nextReviewAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+  }
+
   // upsert — one record per (user, game, move, side)
   await DrillSession.findOneAndUpdate(
     { clerkUserId: userId, gameUuid, moveNumber, side },
@@ -52,9 +63,10 @@ export async function POST(request: Request) {
       side,
       blunderMove: blunderMove ?? '',
       correctMove,
-      solved: solved ?? false,
-      attempts: attempts ?? 1,
-      solvedAt: solved ? new Date() : null,
+      solved: isSolved,
+      attempts: attemptCount,
+      solvedAt: isSolved ? new Date() : null,
+      nextReviewAt: nextReviewAt ?? null,
     },
     { upsert: true },
   );
