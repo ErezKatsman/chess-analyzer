@@ -3,11 +3,51 @@
 ## product goal
 **chess improvement platform** — show players their weaknesses across ALL games, prove they're improving, give personalized drills. not just per-game analysis.
 
-paywall converts when user sees their accuracy curve going up over time (ROI proof).
+paywall converts when user sees their training score going up over time (ROI proof).
 
 ---
 
-## user flows (source of truth)
+## PRODUCT PRIORITIES (read first — governs all decisions)
+
+1. **cross-game weakness detection is the product.** per-game analysis is fuel, not the destination.
+2. **first-session value matters most.** if the first 10 minutes don't deliver the core promise, nothing else matters.
+3. **training score is the only metric shown to users.** the accuracy/training toggle has been removed. only training score is displayed in the dashboard. accuracy is still stored in DB for internal use.
+4. **small slices only.** max 3 files per slice, ~150 LOC. read before edit. preserve existing behavior unless the change is intentional.
+5. **do not add features before fixing the core loop.** the loop is: play → analyze → see weakness → drill → see progress → return.
+
+---
+
+## ACTIVE IMPLEMENTATION PLAN
+
+| slice | goal | status | files |
+|---|---|---|---|
+| Slice A | remove metric toggle + settings tab | ✅ done | `UserPageTabs.tsx` only |
+| Slice B | fix free tier: 3/month → 10 lifetime (via `GameAnalysis.countDocuments`) | ✅ done | `app/api/analyze/route.ts`, `app/api/user/quota/route.ts`, `lib/hooks/useAnalysisQuota.ts` |
+| Slice C | auto-analyze 5 games after first connect → redirect to Coach tab | ✅ done | `ConnectAccount.tsx`, `UserPageTabs.tsx`, new `QuickAnalysisLoader.tsx` |
+| Slice D | weekly email digest | ⏳ not started | new scheduled task + email sender |
+
+**update this table when a slice completes.**
+
+---
+
+## DO NOT TOUCH YET
+
+these are working correctly. do not modify until you have real user feedback or a specific reason:
+
+- `lib/analysis/` — entire folder (stockfish, insights, patterns, accuracy, progressUtils, patternSummary)
+- `GameReplay.tsx` — complex, works, no user complaints
+- `ChessBoard.tsx` — FLIP animation is fragile; set-diff reconcile must not be changed
+- `DrillPanel.tsx` + `useDrillState.ts` — Leitner SRS works
+- `middleware.ts` — route protection is correct
+- `lib/db/schemas.ts` — do not add fields without a specific slice requiring it
+- `OnboardingModal.tsx` — overbuilt but not blocking; delay simplification until after user testing
+- `app/api/explain/route.ts` + `app/api/lessons/route.ts` — AI routes work, caching is correct
+- `UserQuota` collection — leave in place after Slice B (harmless, useful as fallback reference)
+- Stripe code — done; only needs env vars. do not touch the code.
+
+---
+
+## user flows (current state)
 
 ```
 FLOW 1 — anonymous browse (not signed in)
@@ -21,17 +61,21 @@ FLOW 2 — sign in (no profile yet)
       has profile  → dashboard (/)
       no profile   → ConnectAccount (/)
 
-FLOW 3 — connect chess.com account
+FLOW 3 — connect chess.com account (first-time only)
   ConnectAccount → type username → validate → POST /api/user/profile
-  → router.push('/') + router.refresh() → dashboard
+  → sets sessionStorage['chess_quick_analysis']='1' → router.push('/') + router.refresh()
+  → UserPageTabs detects flag + no analyzed games → shows QuickAnalysisLoader
+  → sequential POST /api/analyze for up to 5 most recent games
+  → clears flag → router.push('/?tab=coach') + router.refresh()
+  → Coach tab renders with real patterns (never shows empty state on first visit)
   NOTE: if coming from OnboardingModal, sessionStorage has pre-filled username
-        ConnectAccount reads ONBOARDING_KEY on mount and auto-submits
+        ConnectAccount reads ONBOARDING_KEY on mount and auto-submits (same flag logic applies)
 
 FLOW 4 — personal dashboard (signed in + has profile)
   / → UserPageContent basePath="/"
-  → 5 tabs: Coach / Progress / Games / Profile / Settings
+  → 4 tabs: Coach / Progress / Games / Profile
   → Coach: sparkline + top weakness + PatternSummary
-  → Progress: ProgressChart (rating + accuracy over time)
+  → Progress: ProgressChart (rating + training score over time)
   → Games: GamesTable with ✓ analyzed badges + analyze buttons
   → click Analyze → /game?... → GameReplay full analysis
   → drill practice at /drills (WeaknessDrills + per-game DrillPanel)
@@ -41,7 +85,7 @@ FLOW 5 — change username
   → router.push('/') → ConnectAccount (FLOW 3)
 
 FLOW 6 — quota / paywall
-  Analyze → quota hit (3/mo free) → PaywallModal → Stripe checkout
+  Analyze → quota hit (10 lifetime free) → PaywallModal → Stripe checkout
   → /upgrade/success → plan='paid' → unlimited
 ```
 
@@ -59,7 +103,7 @@ FLOW 6 — quota / paywall
 
 | area | status | key files |
 |---|---|---|
-| auth + quota | ✅ | `middleware.ts`, `UserQuota`, `PaywallModal` |
+| auth + quota | ✅ (free tier: 10 lifetime analyses via `GameAnalysis.countDocuments`) | `middleware.ts`, `PaywallModal`, `lib/hooks/useAnalysisQuota.ts` |
 | chess.com fetch | ✅ | `lib/services/chesscom.ts`, `lib/db/cachedChesscom.ts` |
 | stockfish pipeline | ✅ | `lib/analysis/stockfish.ts`, `insights.ts`, `patterns.ts` |
 | ai explanations | ✅ | `app/api/explain/route.ts`, cached in `GameAnalysis` |
@@ -70,33 +114,33 @@ FLOW 6 — quota / paywall
 | animated board | ✅ | `ChessBoard.tsx` (framer-motion FLIP + set-diff reconcile) |
 | game replay UI | ✅ | `GameReplay.tsx` — 3 tabs: moves / analysis / lessons |
 | move annotations | ✅ | all moves marked: `??/?/?!/!/normal` via `moveQualityMap` from evals[] |
-| accuracy score | ✅ stored in DB | chess.com formula in `api/analyze`, stored in `GameAnalysis.accuracy`, shown in AnalysisPanel + GamesTable badge |
+| accuracy score | ✅ stored in DB | chess.com formula in `api/analyze`, stored in `GameAnalysis.accuracy` |
 | game narrative | ✅ | `buildNarrative()` in `AnalysisPanel.tsx` |
 | keyboard nav | ✅ | `←→` arrow keys in `GameReplay.tsx` |
 | eval graph | ✅ | `EvalGraph.tsx` — colored markers: red/orange/yellow per severity |
 | games table | ✅ | `GamesTable.tsx`, `StatsBar.tsx` |
-| progress graph | ✅ | `ProgressChart.tsx`, `lib/analysis/progressUtils.ts` |
+| progress chart | ✅ | `ProgressChart.tsx`, `lib/analysis/progressUtils.ts` |
 | pattern summary | ✅ | `PatternSummary.tsx`, `lib/analysis/patternSummary.ts` |
 | onboarding modal | ✅ | `OnboardingModal.tsx` — 6-step modal, saves to sessionStorage |
-| dashboard tabs | ✅ | `UserPageTabs.tsx` — Coach/Progress/Games/Profile/Settings |
-| profile tab | ✅ | plan badge + ChangeUsername + onboarding answers |
+| dashboard tabs | ✅ | `UserPageTabs.tsx` — 4 tabs: Coach / Progress / Games / Profile |
+| first-session loader | ✅ | `QuickAnalysisLoader.tsx` — auto-analyzes 5 games after connect, redirects to Coach tab |
+| profile tab | ✅ | plan badge (shows "10 lifetime analyses") + ChangeUsername + onboarding answers |
 | navbar | ✅ | lucide icons + active tab highlight |
 | browse mode | ✅ | Hero → `/user?userName=X` (no auth, no personal data) |
 
 ### stripe — needs 4 env vars (see NOTES.md) — do last
 
-### accuracy + training score — ✅ two metrics in DB
-- `GameAnalysis.accuracy: { white, black }` — chess.com formula (strict, collapses ~0 for beginners at avgCpLoss ≥80)
-- `GameAnalysis.avgCpLoss: { white, black }` — stored alongside accuracy; used to derive training score without re-reading evals
-- **training score** = `max(0, 100 − avgCpLoss × 0.5)` — friendlier curve: 0cp→100, 100cp→50, 200cp→0 (never collapses for real games)
-- `trainingScoreRecord` (uuid→{white,black}) computed server-side in `UserPageContent` from `avgCpLoss`, alongside `accuracyRecord`
-- shared toggle `"Training score | Accuracy"` in `UserPageTabs` (state `metric: AccuracyMetric`) controls both ProgressChart line and GamesTable badge
-- GamesTable badge thresholds: training score green≥70/yellow≥50/red<50; accuracy green≥85/yellow≥70/red<70
-- ✅ **Slice 1 done**: all callers now import from `lib/analysis/accuracy.ts` — single source of truth
+### training score + accuracy — two metrics stored in DB, one shown in UI
+- `GameAnalysis.accuracy: { white, black }` — chess.com formula (strict, collapses ~0 at avgCpLoss ≥80cp) — stored in DB, not displayed in the dashboard
+- `GameAnalysis.avgCpLoss: { white, black }` — stored alongside; used to derive training score
+- **training score** = `max(0, 100 − avgCpLoss × 0.5)` — friendlier curve: 0cp→100, 100cp→50, 200cp→0
+- `trainingScoreRecord` (uuid→{white,black}) computed server-side in `UserPageContent` from `avgCpLoss`
+- training score is always used; the accuracy/training toggle has been removed; `accuracyRecord` still computed server-side but is not displayed
+- GamesTable badge thresholds: training score green≥70 / yellow≥50 / red<50
 
 ---
 
-## completed slices — all 5 done ✅
+## completed slices — historical record
 
 ### ~~slice 1 — unify accuracy formula~~ ✅ DONE
 `lib/analysis/accuracy.ts` created; `progressUtils.ts`, `game-replay/utils.ts`, `api/analyze/route.ts` all import from it.
@@ -109,7 +153,7 @@ FLOW 6 — quota / paywall
 Opponent blunder count in narrative now correct.
 
 ### ~~slice 3 — aggregation window (20 games / 60 days) + recency decay~~ ✅ DONE
-`Pattern.confidence` added; patterns.ts computes `min(1, matchingTPs/3)`; patternSummary.ts: 60-day window + 20-game cap + `score += confidence × 0.9^i`; UserPageContent passes `analyzedAt` + `selfReportedWeakness`.
+`Pattern.confidence` added; `patterns.ts` computes `min(1, matchingTPs/3)`; `patternSummary.ts`: 60-day window + 20-game cap + `score += confidence × 0.9^i`; `UserPageContent` passes `analyzedAt` + `selfReportedWeakness`.
 
 ### ~~slice 4 — two-box leitner SRS for drills~~ ✅ DONE
 `DrillSession.nextReviewAt?: Date` + unique compound index added; attempt route sets +3d on solve, +6h on fail≥2; generated route filters snoozed sessions (`nextReviewAt > now`) + returns `dueCount`.
@@ -119,23 +163,24 @@ Opponent blunder count in narrative now correct.
 `app/game/page.tsx`: reads `analysisVersion`, passes `isStale` to `GameReplay`.
 `GameReplay.tsx`: amber banner when `isStale`; "Re-analyze" button calls `handleAnalyze(force=true)`.
 
-### backlog (after slices)
-6. ~~**accuracy trend line in ProgressChart**~~ ✅ `ae56b54` — uses stored `GameAnalysis.accuracy[playerSide]`; gated behind ≥3 analyzed games
-7. ~~**"practice this now" CTA**~~ ✅ `9b2a732` — "Practice now →" in AnalysisPanel when ≥1 player TP or pattern; routes to `/drills`
-8. **connect stripe** — add env vars: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `NEXT_PUBLIC_APP_URL`
+### other completed items
+- ~~accuracy trend line in ProgressChart~~ ✅ — uses stored `GameAnalysis.accuracy[playerSide]`; gated behind ≥3 analyzed games
+- ~~"practice this now" CTA~~ ✅ — "Practice now →" in AnalysisPanel when ≥1 player TP or pattern; routes to `/drills`
+- **connect stripe** — add env vars: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`, `NEXT_PUBLIC_APP_URL`
 
 ---
 
 ## mongodb schemas (`lib/db/schemas.ts`)
 - `GameAnalysis` — (clerkUserId, gameUuid) → evals, turningPoints, patterns, explanations, lessons
-  - ✅ `accuracy: { white: number; black: number }` — chess.com formula, stored at analysis time
-  - ✅ `analysisVersion: number` — current = 1; bump when pipeline changes
-  - ✅ `playerSide: 'white' | 'black'` — stored at analysis time
-  - ✅ turningPoints: ALL TPs (both sides) stored; filter by `tp.side` at display time
-- `UserQuota` — (clerkUserId, month) → usage count
+  - `accuracy: { white: number; black: number }` — chess.com formula, stored at analysis time
+  - `avgCpLoss: { white: number; black: number }` — stored alongside; enables training score without re-reading evals
+  - `analysisVersion: number` — current = 1; bump when pipeline changes
+  - `playerSide: 'white' | 'black'` — stored at analysis time
+  - turningPoints: ALL TPs (both sides) stored; filter by `tp.side` at display time
+- `UserQuota` — (clerkUserId, month) → usage count — collection still exists in DB; quota logic now uses `GameAnalysis.countDocuments` instead (leave collection in place, harmless)
 - `DrillSession` — (clerkUserId, gameUuid, moveNumber, side)
-  - ✅ `solved: boolean`, `attempts: number`
-  - ✅ `nextReviewAt?: Date` + unique compound index `{ clerkUserId, gameUuid, moveNumber, side }`
+  - `solved: boolean`, `attempts: number`
+  - `nextReviewAt?: Date` + unique compound index `{ clerkUserId, gameUuid, moveNumber, side }`
 - `CachedGames` — chess.com archive cache (TTL 1h)
 - `UserProfile` — clerkUserId → chessUsername + plan ('free'|'paid') + stripe IDs
   - optional: targetRating, timePreference, experience, selfReportedWeakness
@@ -165,14 +210,15 @@ app/
 
 components/
   UserPageContent.tsx             shared server component — dashboard or browse
-  UserPageTabs.tsx                client: 5-tab nav (Coach/Progress/Games/Profile/Settings)
-  ConnectAccount.tsx              client: sole save point for chess.com username
+  UserPageTabs.tsx                client: 4-tab nav (Coach/Progress/Games/Profile); shows QuickAnalysisLoader on first connect
+  QuickAnalysisLoader.tsx         client: first-session loader — sequential analysis + redirect to Coach tab
+  ConnectAccount.tsx              client: sole save point for chess.com username; sets chess_quick_analysis flag on first connect
   ChangeUsernameButton.tsx        client: DELETE profile → back to ConnectAccount
   Hero.tsx                        anon landing — opens OnboardingModal
   OnboardingModal.tsx             6-step framer-motion modal
   Navbar.tsx                      lucide icons + active tab (pathname='/' only)
   WeaknessDrills.tsx              cross-game drill component (phase state machine)
-  ProgressChart.tsx               recharts dual-axis (rating + accuracy over time)
+  ProgressChart.tsx               recharts dual-axis (rating + training score over time)
   PatternSummary.tsx              ranked weakness list with coaching hints
   game-replay/
     MovesList.tsx                 all-move annotations via moveQualityMap + auto-scroll
@@ -198,8 +244,6 @@ lib/
 
 ---
 
----
-
 ## analysis output contract
 
 ### per-game deliverables (stored in `GameAnalysis`)
@@ -221,13 +265,13 @@ lib/
   side: 'white' | 'black';
   type: 'blunder' | 'mistake' | 'inaccuracy' | 'missed_win' | 'good_defense';
   movePlayed: string;      // uci of the move played (e.g. "e2e4") — used by drill board
-  bestMove?: string;       // uci best move from evals[plyBefore].bestMove — TODO (Slice 2)
+  bestMove?: string;       // uci best move from evals[plyBefore].bestMove
   evalBefore: number;      // cp from mover perspective (null = mate score)
   evalAfter: number;       // cp from mover perspective after move
   positionHint: string;    // fen before the move (for drill board)
   oneLineReason: string;   // ≤12 words, plain english, no engine jargon
 }
-// NOTE: movePlayed is UCI (not SAN). bestMove is UCI. SAN conversion requires chess.js — deferred.
+// movePlayed is UCI (not SAN). bestMove is UCI.
 // all TPs from both sides are stored in DB; filter at display time by tp.side === playerSide
 ```
 
@@ -255,8 +299,8 @@ lib/
 ### mapping rules (applied in `lib/analysis/patterns.ts`)
 1. classify each turning point by the rules above — a TP may match multiple tags; pick the **most specific** (tactics > king-safety > opening > endgame > strategy)
 2. a pattern fires for a game if **≥ 2** turning points share the same tag, OR **1** blunder matches
-3. `confidence = min(1, matchingTPs / 3)` — stored on `Pattern.confidence`; used for cross-game weighting (TODO Slice 3)
-4. tie-breaker for "top weakness": highest `sum(confidence × recencyWeight)` across last 20 games within 60-day window (TODO Slice 3)
+3. `confidence = min(1, matchingTPs / 3)` — stored on `Pattern.confidence`; used for cross-game weighting
+4. tie-breaker for "top weakness": highest `sum(confidence × recencyWeight)` across last 20 games within 60-day window
 
 ### decided-position suppression — keep current thresholds (product decision)
 suppress blunders in positions already decided beyond `DECIDED_BLUNDER_CP = 350`. keep current behavior.
@@ -270,7 +314,7 @@ games older than 60 days get weight 0 regardless of index.
 
 ---
 
-## cross-game aggregation spec
+## cross-game aggregation
 
 ### window
 - **last 20 analyzed games** or **last 60 days**, whichever is smaller
@@ -280,23 +324,11 @@ games older than 60 days get weight 0 regardless of index.
 | metric | source | used in |
 |---|---|---|
 | weakness leaderboard | pattern tags × recency weights | Coach tab PatternSummary |
-| training score trend | `GameAnalysis.avgCpLoss[playerSide]` → `computeTrainingScore()` per game × date | Progress ProgressChart (default) |
-| accuracy trend | `GameAnalysis.accuracy[playerSide]` per game × date | Progress ProgressChart (toggle) |
+| training score trend | `GameAnalysis.avgCpLoss[playerSide]` → `computeTrainingScore()` per game × date | Progress tab ProgressChart |
 | phase breakdown | pattern tag buckets: opening/middlegame/endgame | Progress tab (future) |
 | openings report | first 6 moves + ECO + win/loss/draw | placeholder — not built yet |
 
-### aggregation algorithm (`lib/analysis/patternSummary.ts`)
-```
-// CURRENT implementation (flat game count, no decay, no window) — to be replaced by Slice 3
-for each analyzed game (all time, no limit):
-  collect unique tags in this game (one count per game even if pattern fired multiple times)
-  for each unique tag:
-    gameCount[tag] += 1
-    hintMap[tag] = pattern.coachingHint  // overwritten each game (most recent wins)
-sort by gameCount descending → weakness leaderboard
-```
-
-**Slice 3 target implementation:**
+### aggregation algorithm (`lib/analysis/patternSummary.ts`) — current implementation
 ```ts
 // input: { patterns: Pattern[], date: number }[] — sorted most recent first
 // step 1: filter to 60-day window
@@ -308,7 +340,7 @@ sort by gameCount descending → weakness leaderboard
 ### clustering tie-breaker
 if two tags within 0.05 score of each other → prefer the tag the user self-reported in onboarding (`selfReportedWeakness`), else prefer higher raw `gameCount`.
 
-### drills — two-box leitner SRS (Slice 4 target)
+### drills — two-box leitner SRS
 ```
 DrillSession.nextReviewAt:
   null           = new drill, include immediately
@@ -316,8 +348,7 @@ DrillSession.nextReviewAt:
   > now          = snoozed, exclude
 
 on solve (correct on attempt 1 or 2):  nextReviewAt = now + 3 days
-on fail (still wrong after attempt 2, i.e. DrillSession.attempts >= 2 and solved=false): nextReviewAt = now + 6 hours
-// "attempt" = one click of a move in the drill board within the same DrillSession document
+on fail (still wrong after attempt 2): nextReviewAt = now + 6 hours
 
 api/drills/generated returns dueCount = drills matching the filter (for dashboard badge)
 ```
@@ -339,13 +370,8 @@ total: **40–80 words** for `explanation`; `rule` field = principle only (≤ 1
 
 ### uci vs san in ai prompts
 `TurningPoint.movePlayed` and `TurningPoint.bestMove` are stored as **UCI** (e.g. `"g1f3"`), not SAN.
-The AI explanation template asks for SAN lines (e.g. `14.Nd5 Bxd5 15.exd5`).
-
-**current approach**: the AI prompt passes UCI move strings and the model is expected to output valid SAN on its own — no server-side conversion or validation is applied. this works in practice because claude haiku correctly converts UCI to SAN for standard moves.
-
-**known limitation**: the model may produce incorrect SAN for promotions, ambiguous pieces, or en passant without explicit board context.
-
-**future (deferred)**: Slice 2 adds `bestMove` to `TurningPoint`. a later slice may use chess.js to convert UCI → SAN before injecting into the prompt, providing validated move context and eliminating the edge-case risk.
+The AI prompt passes UCI move strings and the model outputs valid SAN — no server-side conversion applied.
+Known limitation: model may produce incorrect SAN for promotions, ambiguous pieces, or en passant.
 
 ### forbidden language
 - never mention engine depth, nodes, multipv, stockfish, or evaluation numbers
@@ -387,12 +413,11 @@ lessons explain a **pattern**, not a specific move:
 - bump to **2** when: thresholds change, stockfish depth changes, pattern taxonomy changes
 - on read: if `doc.analysisVersion < CURRENT_VERSION`, treat as stale → show "re-analyze free" banner in `GameReplay`
 - do NOT auto-delete stale docs; let user trigger re-analysis
-- **quota rule (decided)**: re-analysis triggered by a version bump is **free** — bypass quota when `force=true && cached.analysisVersion < CURRENT_VERSION`
-- implementation: `GET /api/analyze?force=true` skips quota check if stale; `GameReplay` passes `isStale` prop from `app/game/page.tsx`
+- **quota rule**: re-analysis triggered by a version bump is **free** — bypass quota when `force=true && cached.analysisVersion < CURRENT_VERSION`
 
 ### benchmark expectations
 - accuracy formula tolerance: ±2% vs chess.com for the same game at same depth
-- rerun stability: same PGN + same stockfish binary on the same hardware → stable `evals[]` within tolerance; results may differ across machines or under load (movetime ≠ fixed depth). cached results are the source of truth — do not re-run to "correct" a stored analysis unless `analysisVersion` is bumped.
+- rerun stability: same PGN + same stockfish binary → stable `evals[]` within tolerance; results may differ across machines or under load. cached results are the source of truth.
 - pattern detection: ≥ 80% recall on hand-labeled test games (manual spot-check only, no automated suite yet)
 
 ---
@@ -410,16 +435,9 @@ lessons explain a **pattern**, not a specific move:
 
 ### stockfish limits (per position, `lib/analysis/stockfish.ts`)
 - `movetime`: **500ms** per position (current default)
-- do NOT use depth-limit mode — movetime gives predictable latency; depth reached varies by CPU speed and server load, so results are NOT identical across machines or deploys
+- do NOT use depth-limit mode — movetime gives predictable latency
 - max positions per game: **no hard limit**, but warn if > 150 plies (very long games)
 - parallel games: **1 at a time** per server process (stockfish is single-threaded per instance)
-- drift across deploys is handled by `analysisVersion` + caching: once a result is stored it is canonical for that version, regardless of what a re-run would produce on different hardware
-
-### deep-analysis selection (future feature — not built)
-- a game qualifies for deep analysis (movetime 2000ms) if:
-  - it is the user's most recent loss, OR
-  - it contains ≥ 2 blunders at standard depth
-- deep analysis does NOT consume extra quota — it is a background re-run
 
 ### caching strategy
 | layer | what | TTL |
@@ -437,6 +455,12 @@ lessons explain a **pattern**, not a specific move:
 - never touch `.env` or print secrets.
 - lowercase comments where logic is non-obvious. descriptive names.
 - verify each slice: `npm run typecheck && npm run lint`
+- read every file before editing it — never edit blind.
+- prefer isolated, reversible changes. if a change is hard to undo, pause and reconsider.
+- do not refactor working code to make it "cleaner" — only change what the slice requires.
+- use the `nextjs-implementer` agent for slice implementations (small diffs, follows CLAUDE.md).
+- use the `codebase-explorer` agent to understand code before editing.
+- update the ACTIVE IMPLEMENTATION PLAN table in this file when a slice completes.
 
 ## commands
 ```bash
@@ -464,9 +488,16 @@ const [analysis, setAnalysis] = useState<AnalysisState>(() =>
 // router.refresh() clears next.js cache so "✓ analyzed" badge updates on back-nav
 router.refresh();
 
-// quota: increment before running to prevent races
-await UserQuota.updateOne({ clerkUserId, month }, { $inc: { count: 1 } });
-if (quota.count >= FREE_LIMIT) return 402;
+// quota — lifetime gate via countDocuments (no increment needed: new doc at end of analysis is the counter)
+// FREE_LIMIT = 10 lifetime; exported from lib/hooks/useAnalysisQuota.ts
+const lifetimeCount = await GameAnalysis.countDocuments({ clerkUserId: userId });
+if (lifetimeCount >= LIFETIME_FREE_LIMIT) return 402;
+
+// first-session loader sessionStorage flag
+// ConnectAccount sets: sessionStorage.setItem('chess_quick_analysis', '1')
+// UserPageTabs reads on mount: if flag + analyzedUuidsList.length === 0 → show QuickAnalysisLoader
+// QuickAnalysisLoader clears: sessionStorage.removeItem('chess_quick_analysis')
+//   then: router.push('/?tab=coach') + router.refresh()
 
 // Map iteration — use .forEach() not for...of (TS target doesn't support downlevel iteration)
 map.forEach((value, key) => { ... });
@@ -482,16 +513,16 @@ Array.from(mySet).map(...)
 // ply 1 = white's first move, ply 2 = black's first move, etc.
 // side: p % 2 === 1 ? 'white' : 'black'
 
-// accuracy formula (chess.com compatible)
-// computeAccuracy(evals, side): 103.1668 * exp(-0.04354 * avgCpLoss) - 3.1669
-// caps loss at 1000cp per move — in game-replay/utils.ts
+// training score formula — single source of truth in lib/analysis/accuracy.ts
+// computeTrainingScore(avgCpLoss): max(0, 100 - avgCpLoss * 0.5)
+// computeChesscomAccuracy(evals, side): 103.1668 * exp(-0.04354 * avgCpLoss) - 3.1669
 
 // onboarding sessionStorage key
 const ONBOARDING_KEY = 'chess_onboarding';
 // OnboardingModal saves → Clerk openSignIn() → ConnectAccount reads + auto-submits on mount
 
-// tab routing
-// /?tab=coach (default) | /?tab=progress | /?tab=games | /?tab=profile | /?tab=settings
+// tab routing — 4 tabs only
+// /?tab=coach (default) | /?tab=progress | /?tab=games | /?tab=profile
 // Navbar active: only highlight when pathname === '/' to avoid false match on /game, /drills
 
 // EvalGraph markedPlies prop

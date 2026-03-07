@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { checkAndSetUserExist } from '@/lib/userUtils';
 import { ONBOARDING_KEY, type OnboardingStoredData } from '@/components/OnboardingModal';
+import { QUICK_ANALYSIS_KEY } from '@/components/QuickAnalysisLoader';
 
 // shown to signed-in users who have no saved chess.com username yet.
 // this is the ONLY place that saves a chess.com username to a profile.
@@ -46,6 +47,7 @@ export function ConnectAccount() {
       body: JSON.stringify(stored),
     }).then(res => {
       if (res.ok) {
+        sessionStorage.setItem(QUICK_ANALYSIS_KEY, '1');
         router.push('/');
         router.refresh();
       } else {
@@ -84,6 +86,7 @@ export function ConnectAccount() {
         body: JSON.stringify({ chessUsername: name }),
       });
       if (res.ok) {
+        sessionStorage.setItem(QUICK_ANALYSIS_KEY, '1');
         router.push('/');
         router.refresh();
       }

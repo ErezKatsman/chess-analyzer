@@ -9,12 +9,13 @@ import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry } from '@/lib/analysis/patternSummary';
 import { GamesTable } from '@/components/GamesTable';
 import { StatsBar } from '@/components/StatsBar';
-import { ProgressChart, type ChartPoint, type AccuracyMetric } from '@/components/ProgressChart';
+import { ProgressChart, type ChartPoint } from '@/components/ProgressChart';
 import { PatternSummary } from '@/components/PatternSummary';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { RatingHeroCard } from '@/components/RatingHeroCard';
 import { CoachBanner } from '@/components/CoachBanner';
 import { PaywallModal } from '@/components/PaywallModal';
+import { QuickAnalysisLoader, QUICK_ANALYSIS_KEY } from '@/components/QuickAnalysisLoader';
 
 export type ProfileData = {
   plan: 'free' | 'paid';
@@ -24,7 +25,7 @@ export type ProfileData = {
   selfReportedWeakness?: string;
 };
 
-type Tab = 'coach' | 'progress' | 'games' | 'profile' | 'settings';
+type Tab = 'coach' | 'progress' | 'games' | 'profile';
 
 interface Props {
   games: IGame[];
@@ -50,7 +51,6 @@ const OWNER_TABS: { key: Tab; label: string }[] = [
   { key: 'progress', label: 'Progress'   },
   { key: 'games',    label: 'Games'      },
   { key: 'profile',  label: 'My Profile' },
-  { key: 'settings', label: 'Settings'   },
 ];
 
 // drills tab links out to /drills — separate route, not a dashboard sub-tab
@@ -74,10 +74,17 @@ export function UserPageTabs({
 }: Props) {
   const searchParams = useSearchParams();
   const [showPaywall, setShowPaywall] = useState(false);
-  // shared metric toggle — controls both ProgressChart line and GamesTable badge
-  const [metric, setMetric] = useState<AccuracyMetric>('training');
   // null = not yet fetched or fetch failed; 0 = no drills due; >0 = show badge
   const [dueCount, setDueCount] = useState<number | null>(null);
+  // true when user just connected for the first time and has no analyzed games yet
+  const [showLoader, setShowLoader] = useState(false);
+
+  useEffect(() => {
+    if (analyzedUuidsList.length === 0 && sessionStorage.getItem(QUICK_ANALYSIS_KEY) === '1') {
+      setShowLoader(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -131,6 +138,11 @@ export function UserPageTabs({
     })
     .filter(p => p.rating > 0)
     .sort((a, b) => a.date - b.date);
+
+  // first-time connect: show progress loader, then redirect to Coach tab
+  if (showLoader) {
+    return <QuickAnalysisLoader games={games} userName={userName} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -233,21 +245,6 @@ export function UserPageTabs({
             <div className="flex items-start justify-between gap-4 mb-1">
               <h2 className="text-sm font-semibold">your progress</h2>
               <div className="flex items-center gap-2 flex-wrap justify-end">
-                {/* metric toggle — shared with Games tab badge */}
-                <div className="flex items-center rounded-full border p-0.5 text-xs">
-                  {(['training', 'accuracy'] as const).map(m => (
-                    <button
-                      key={m}
-                      onClick={() => setMetric(m)}
-                      className={[
-                        'px-2.5 py-0.5 rounded-full font-medium transition-colors',
-                        metric === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-                      ].join(' ')}
-                    >
-                      {m === 'training' ? 'Training score' : 'Accuracy'}
-                    </button>
-                  ))}
-                </div>
                 {/* time-class filter pills */}
                 {availableTcs.length > 1 && (
                   <div className="flex gap-1 flex-wrap justify-end">
@@ -270,7 +267,7 @@ export function UserPageTabs({
               </div>{/* end metric + time-class controls */}
             </div>
             <p className="text-xs text-muted-foreground mb-4">
-              {selectedTc} — {metric === 'training' ? 'training score' : 'accuracy'} &amp; rating across {allChartPoints.filter(p => p.trainingScore != null).length} analyzed game
+              {selectedTc} — training score &amp; rating across {allChartPoints.filter(p => p.trainingScore != null).length} analyzed game
               {allChartPoints.filter(p => p.trainingScore != null).length !== 1 ? 's' : ''} of {allChartPoints.length} total
               <span className="inline-flex gap-3 ml-2">
                 <span><span className="text-emerald-400">●</span> win</span>
@@ -278,7 +275,7 @@ export function UserPageTabs({
                 <span><span className="text-slate-400">●</span> draw</span>
               </span>
             </p>
-            <ProgressChart data={allChartPoints} drillMarkers={drillMarkers} metric={metric} />
+            <ProgressChart data={allChartPoints} drillMarkers={drillMarkers} />
           </section>
           <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
         </div>
@@ -313,7 +310,6 @@ export function UserPageTabs({
                 analyzedUuids={analyzedUuids}
                 accuracyRecord={accuracyRecord}
                 trainingScoreRecord={trainingScoreRecord}
-                metric={metric}
                 isOwner={isOwner}
               />
             </>
@@ -341,7 +337,7 @@ export function UserPageTabs({
                   <p className="text-sm font-medium text-emerald-500">✓ premium · unlimited</p>
                 ) : (
                   <>
-                    <p className="text-sm text-muted-foreground">free · 3 analyses / month</p>
+                    <p className="text-sm text-muted-foreground">free · 10 lifetime analyses</p>
                     <button
                       onClick={() => setShowPaywall(true)}
                       className="text-xs font-medium text-primary hover:underline"
@@ -393,13 +389,6 @@ export function UserPageTabs({
         </>
       )}
 
-      {/* ── Settings tab ── */}
-      {tab === 'settings' && isOwner && (
-        <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-2">
-          <h2 className="text-sm font-semibold">settings</h2>
-          <p className="text-sm text-muted-foreground">more options coming soon.</p>
-        </div>
-      )}
     </div>
   );
 }

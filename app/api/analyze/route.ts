@@ -9,16 +9,10 @@ import { computeAccuracyDebug } from '@/lib/analysis/accuracy';
 import { computeTurningPoints } from '@/lib/analysis/insights';
 import { detectPatterns } from '@/lib/analysis/patterns';
 import { connectDB } from '@/lib/db/mongo';
-import { GameAnalysis, UserQuota, UserProfile } from '@/lib/db/schemas';
+import { GameAnalysis, UserProfile } from '@/lib/db/schemas';
 
-const FREE_LIMIT = 3;
+const LIFETIME_FREE_LIMIT = 10;
 const ANALYSIS_VERSION = 1;
-
-
-function currentMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
 
 // lite single-threaded variant — lighter and simpler for server use
 function getStockfishPath(): string {
@@ -137,19 +131,12 @@ export async function POST(request: Request) {
   const isStaleReanalysis = force === true && Boolean(gameUuid);
 
   if (!isPaid && !isStaleReanalysis) {
-    // check + increment quota (server-side, unenforced by client)
-    const month = currentMonth();
-    const quota = await UserQuota.findOneAndUpdate(
-      { clerkUserId: userId, month },
-      { $setOnInsert: { clerkUserId: userId, month, count: 0 } },
-      { upsert: true, new: true },
-    );
-
-    if (quota.count >= FREE_LIMIT) {
-      return NextResponse.json({ error: 'quota_exceeded', limit: FREE_LIMIT }, { status: 402 });
+    // lifetime quota — count existing GameAnalysis docs for this user
+    // no increment needed: the new doc saved at end of analysis is the implicit counter
+    const lifetimeCount = await GameAnalysis.countDocuments({ clerkUserId: userId });
+    if (lifetimeCount >= LIFETIME_FREE_LIMIT) {
+      return NextResponse.json({ error: 'quota_exceeded', limit: LIFETIME_FREE_LIMIT }, { status: 402 });
     }
-
-    await UserQuota.updateOne({ clerkUserId: userId, month }, { $inc: { count: 1 }, updatedAt: new Date() });
   }
 
   const moves = getParsedMovesFromPgn(pgn);
