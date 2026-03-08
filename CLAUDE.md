@@ -24,6 +24,7 @@ paywall converts when user sees their training score going up over time (ROI pro
 | Slice A | remove metric toggle + settings tab | ✅ done | `UserPageTabs.tsx` only |
 | Slice B | fix free tier: 3/month → 10 lifetime (via `GameAnalysis.countDocuments`) | ✅ done | `app/api/analyze/route.ts`, `app/api/user/quota/route.ts`, `lib/hooks/useAnalysisQuota.ts` |
 | Slice C | auto-analyze 5 games after first connect → redirect to Coach tab | ✅ done | `ConnectAccount.tsx`, `UserPageTabs.tsx`, new `QuickAnalysisLoader.tsx` |
+| Slice 1B | coaching-first post-analysis screen (CoachingSummary) | ✅ done | `QuickAnalysisLoader.tsx`, `UserPageTabs.tsx`, new `CoachingSummary.tsx` |
 | Slice D | weekly email digest | ⏳ not started | new scheduled task + email sender |
 
 **update this table when a slice completes.**
@@ -38,6 +39,7 @@ these are working correctly. do not modify until you have real user feedback or 
 - `GameReplay.tsx` — complex, works, no user complaints
 - `ChessBoard.tsx` — FLIP animation is fragile; set-diff reconcile must not be changed
 - `DrillPanel.tsx` + `useDrillState.ts` — Leitner SRS works
+- `CoachingSummary.tsx` — first-session screen works; do not modify until after user testing
 - `middleware.ts` — route protection is correct
 - `lib/db/schemas.ts` — do not add fields without a specific slice requiring it
 - `OnboardingModal.tsx` — overbuilt but not blocking; delay simplification until after user testing
@@ -65,11 +67,19 @@ FLOW 3 — connect chess.com account (first-time only)
   ConnectAccount → type username → validate → POST /api/user/profile
   → sets sessionStorage['chess_quick_analysis']='1' → router.push('/') + router.refresh()
   → UserPageTabs detects flag + no analyzed games → shows QuickAnalysisLoader
-  → sequential POST /api/analyze for up to 5 most recent games
-  → clears flag → router.push('/?tab=coach') + router.refresh()
-  → Coach tab renders with real patterns (never shows empty state on first visit)
+  → sequential POST /api/analyze for up to 5 most recent games (90s AbortController per game)
+  → QuickAnalysisLoader calls onComplete() when done (does NOT own navigation)
+  → UserPageTabs.handleAnalysisComplete():
+      setShowLoader(false)
+      sessionStorage.setItem('chess_coaching_summary', '1')
+      sessionStorage.removeItem('chess_quick_analysis')
+      router.refresh()  ← re-fetches server component data (patterns, progressPoints)
+  → After refresh: hasSummaryFlag=true + patternEntries arrives → showCoachingSummary=true
+  → CoachingSummary renders (top weakness + drill cards + training score baseline)
+  → user dismisses → clears flag → normal 4-tab dashboard
   NOTE: if coming from OnboardingModal, sessionStorage has pre-filled username
         ConnectAccount reads ONBOARDING_KEY on mount and auto-submits (same flag logic applies)
+  NOTE: router.push('/') is a NO-OP when already at '/' — never use it in this flow
 
 FLOW 4 — personal dashboard (signed in + has profile)
   / → UserPageContent basePath="/"
@@ -123,7 +133,8 @@ FLOW 6 — quota / paywall
 | pattern summary | ✅ | `PatternSummary.tsx`, `lib/analysis/patternSummary.ts` |
 | onboarding modal | ✅ | `OnboardingModal.tsx` — 6-step modal, saves to sessionStorage |
 | dashboard tabs | ✅ | `UserPageTabs.tsx` — 4 tabs: Coach / Progress / Games / Profile |
-| first-session loader | ✅ | `QuickAnalysisLoader.tsx` — auto-analyzes 5 games after connect, redirects to Coach tab |
+| first-session loader | ✅ | `QuickAnalysisLoader.tsx` — auto-analyzes 5 games; calls `onComplete()` callback when done |
+| coaching summary | ✅ | `CoachingSummary.tsx` — shown once after first-session; top weakness + drill cards + baseline score |
 | profile tab | ✅ | plan badge (shows "10 lifetime analyses") + ChangeUsername + onboarding answers |
 | navbar | ✅ | lucide icons + active tab highlight |
 | browse mode | ✅ | Hero → `/user?userName=X` (no auth, no personal data) |
@@ -211,7 +222,8 @@ app/
 components/
   UserPageContent.tsx             shared server component — dashboard or browse
   UserPageTabs.tsx                client: 4-tab nav (Coach/Progress/Games/Profile); shows QuickAnalysisLoader on first connect
-  QuickAnalysisLoader.tsx         client: first-session loader — sequential analysis + redirect to Coach tab
+  QuickAnalysisLoader.tsx         client: first-session loader — sequential analysis, calls onComplete() callback
+  CoachingSummary.tsx             client: shown once after first-session; top weakness + drill cards; onDismiss → normal tabs
   ConnectAccount.tsx              client: sole save point for chess.com username; sets chess_quick_analysis flag on first connect
   ChangeUsernameButton.tsx        client: DELETE profile → back to ConnectAccount
   Hero.tsx                        anon landing — opens OnboardingModal
@@ -493,11 +505,21 @@ router.refresh();
 const lifetimeCount = await GameAnalysis.countDocuments({ clerkUserId: userId });
 if (lifetimeCount >= LIFETIME_FREE_LIMIT) return 402;
 
-// first-session loader sessionStorage flag
+// first-session loader — callback pattern (router.push('/') is a NO-OP when already at '/')
 // ConnectAccount sets: sessionStorage.setItem('chess_quick_analysis', '1')
 // UserPageTabs reads on mount: if flag + analyzedUuidsList.length === 0 → show QuickAnalysisLoader
-// QuickAnalysisLoader clears: sessionStorage.removeItem('chess_quick_analysis')
-//   then: router.push('/?tab=coach') + router.refresh()
+// QuickAnalysisLoader calls onComplete() when done — does NOT touch sessionStorage or router
+// UserPageTabs.handleAnalysisComplete():
+//   setShowLoader(false)
+//   sessionStorage.setItem('chess_coaching_summary', '1')
+//   sessionStorage.removeItem('chess_quick_analysis')
+//   router.refresh()  ← re-fetches server data; patternEntries arrive on next render
+// derived state (not useState): showCoachingSummary = hasSummaryFlag && patternEntries.length > 0
+//   → survives the router.refresh() race: hasSummaryFlag stays true, showCoachingSummary auto-flips true when patterns arrive
+// CoachingSummary.onDismiss(): sessionStorage.removeItem('chess_coaching_summary') + setHasSummaryFlag(false)
+
+// key prop forces fresh DrillPanel per drill — useDrillState uses useState (NOT reset on prop change)
+<DrillPanel key={`${drill.gameUuid}-${drill.moveNumber}-${drill.side}`} fen={drill.fen} ... />
 
 // Map iteration — use .forEach() not for...of (TS target doesn't support downlevel iteration)
 map.forEach((value, key) => { ... });

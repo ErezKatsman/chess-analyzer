@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { IGame } from '@/lib/interfaces/games';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry } from '@/lib/analysis/patternSummary';
@@ -16,6 +16,7 @@ import { RatingHeroCard } from '@/components/RatingHeroCard';
 import { CoachBanner } from '@/components/CoachBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { QuickAnalysisLoader, QUICK_ANALYSIS_KEY } from '@/components/QuickAnalysisLoader';
+import { CoachingSummary, COACHING_SUMMARY_KEY } from '@/components/CoachingSummary';
 
 export type ProfileData = {
   plan: 'free' | 'paid';
@@ -72,16 +73,27 @@ export function UserPageTabs({
   accuracyRecord,
   trainingScoreRecord,
 }: Props) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [showPaywall, setShowPaywall] = useState(false);
   // null = not yet fetched or fetch failed; 0 = no drills due; >0 = show badge
   const [dueCount, setDueCount] = useState<number | null>(null);
   // true when user just connected for the first time and has no analyzed games yet
   const [showLoader, setShowLoader] = useState(false);
+  // flag read once on mount from sessionStorage — stable, never changes after mount
+  const [hasSummaryFlag, setHasSummaryFlag] = useState(false);
+  // derived: true only when flag is set AND patterns have arrived after router.refresh()
+  // this survives the race where router.push() navigates with stale (empty) patternEntries
+  // and patterns only become available once router.refresh() completes
+  const showCoachingSummary = hasSummaryFlag && patternEntries.length > 0;
 
   useEffect(() => {
     if (analyzedUuidsList.length === 0 && sessionStorage.getItem(QUICK_ANALYSIS_KEY) === '1') {
       setShowLoader(true);
+      return;
+    }
+    if (sessionStorage.getItem(COACHING_SUMMARY_KEY) === '1') {
+      setHasSummaryFlag(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -97,6 +109,21 @@ export function UserPageTabs({
         // silently ignore — badge just won't show
       });
   }, [isOwner]);
+  // called by QuickAnalysisLoader when all games are processed
+  // sets flags synchronously then triggers a server refresh to pull real patterns
+  function handleAnalysisComplete() {
+    sessionStorage.setItem(COACHING_SUMMARY_KEY, '1');
+    sessionStorage.removeItem(QUICK_ANALYSIS_KEY);
+    setShowLoader(false);
+    setHasSummaryFlag(true);
+    router.refresh();
+  }
+
+  function handleDismissCoachingSummary() {
+    sessionStorage.removeItem(COACHING_SUMMARY_KEY);
+    setHasSummaryFlag(false);
+  }
+
   const VALID_TABS = OWNER_TABS.map(t => t.key);
   const tab: Tab = (VALID_TABS.includes(activeTab as Tab) ? activeTab : 'coach') as Tab;
   const analyzedUuids = new Set(analyzedUuidsList);
@@ -139,9 +166,37 @@ export function UserPageTabs({
     .filter(p => p.rating > 0)
     .sort((a, b) => a.date - b.date);
 
-  // first-time connect: show progress loader, then redirect to Coach tab
+  // first-time connect: analyze games then hand off via onComplete
   if (showLoader) {
-    return <QuickAnalysisLoader games={games} userName={userName} />;
+    return <QuickAnalysisLoader games={games} userName={userName} onComplete={handleAnalysisComplete} />;
+  }
+
+  // analysis just finished — waiting for router.refresh() to bring real patterns
+  // avoids flashing the empty Coach tab during the brief server round-trip
+  if (hasSummaryFlag && patternEntries.length === 0) {
+    return (
+      <main className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center space-y-4">
+          <div className="text-5xl animate-pulse select-none">♟</div>
+          <p className="text-sm font-medium">preparing your coaching plan…</p>
+        </div>
+      </main>
+    );
+  }
+
+  // post-analysis coaching summary: shown once after first-session analysis
+  if (showCoachingSummary && patternEntries[0]) {
+    const recentTrainingScore = progressPoints.length > 0
+      ? ([...progressPoints].sort((a, b) => b.date - a.date)[0]?.trainingScore ?? null)
+      : null;
+    return (
+      <CoachingSummary
+        topPattern={patternEntries[0]}
+        totalAnalyzedGames={progressPoints.length}
+        recentTrainingScore={recentTrainingScore}
+        onDismiss={handleDismissCoachingSummary}
+      />
+    );
   }
 
   return (

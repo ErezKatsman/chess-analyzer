@@ -51,6 +51,7 @@ export function WeaknessDrills() {
     const drill = data.drills[index];
     return (
       <DrillPanel
+        key={`${drill.gameUuid}-${drill.moveNumber}-${drill.side}`}
         fen={drill.fen}
         bestMove={drill.bestMove}
         blunderMove={drill.blunderMove}

@@ -1,11 +1,10 @@
 'use client';
 
 // shown once after a user first connects their chess.com account.
-// sequentially analyzes up to 5 recent games, then redirects to the Coach tab.
-// no summary UI here — Coach tab renders patterns after router.refresh().
+// sequentially analyzes up to 5 recent games, then calls onComplete so the
+// parent (UserPageTabs) can clear the loader and trigger a server refresh.
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import type { IGame } from '@/lib/interfaces/games';
 
 export const QUICK_ANALYSIS_KEY = 'chess_quick_analysis';
@@ -15,10 +14,11 @@ const MAX_GAMES = 5;
 interface Props {
   games: IGame[];
   userName: string;
+  // called once all games are processed — parent is responsible for state + refresh
+  onComplete: () => void;
 }
 
-export function QuickAnalysisLoader({ games }: Props) {
-  const router = useRouter();
+export function QuickAnalysisLoader({ games, onComplete }: Props) {
   const [current, setCurrent] = React.useState(0);
   const [total, setTotal] = React.useState(0);
 
@@ -33,6 +33,10 @@ export function QuickAnalysisLoader({ games }: Props) {
       for (let i = 0; i < targets.length; i++) {
         setCurrent(i + 1);
         const game = targets[i];
+        const controller = new AbortController();
+        // 90s cap per game — generous vs the 45s p95 target; prevents a hung
+        // stockfish process from freezing the loader indefinitely
+        const timeoutId = setTimeout(() => controller.abort(), 90_000);
         try {
           await fetch('/api/analyze', {
             method: 'POST',
@@ -43,15 +47,17 @@ export function QuickAnalysisLoader({ games }: Props) {
               playerSide: game.isWhite ? 'white' : 'black',
               gameUuid: game.uuid,
             }),
+            signal: controller.signal,
           });
         } catch {
-          // per-game failures are non-fatal — continue the batch
+          // per-game failures (including timeouts) are non-fatal — continue the batch
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
 
-      sessionStorage.removeItem(QUICK_ANALYSIS_KEY);
-      router.push('/?tab=coach');
-      router.refresh();
+      // parent owns sessionStorage + refresh — just signal completion
+      onComplete();
     }
 
     void run();
