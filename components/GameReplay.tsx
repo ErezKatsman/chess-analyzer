@@ -583,15 +583,17 @@ export function GameReplay({
                 >
                   {isAnalyzing ? 'analyzing…' : 'analyze'}
                 </Button>
-                {/* quota hint — live from server, falls back to static limit */}
-                <span className={[
-                  'text-[10px]',
-                  quota && quota.remaining === 0 ? 'text-destructive font-semibold' : 'text-muted-foreground',
-                ].join(' ')}>
-                  {quota
-                    ? `${quota.remaining} of ${quota.limit} analyses left`
-                    : `${FREE_LIMIT} free analyses/month`}
-                </span>
+                {/* quota hint — hidden for paid users */}
+                {(!quota || !quota.isPaid) && (
+                  <span className={[
+                    'text-[10px]',
+                    quota && quota.remaining === 0 ? 'text-destructive font-semibold' : 'text-muted-foreground',
+                  ].join(' ')}>
+                    {quota
+                      ? `${quota.remaining} of ${quota.limit} analyses left`
+                      : `${FREE_LIMIT} free analyses/month`}
+                  </span>
+                )}
               </>
             )}
           </div>

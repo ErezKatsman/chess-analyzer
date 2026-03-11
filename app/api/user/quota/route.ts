@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { connectDB } from '@/lib/db/mongo';
-import { GameAnalysis } from '@/lib/db/schemas';
+import { GameAnalysis, UserProfile } from '@/lib/db/schemas';
 
 const LIFETIME_FREE_LIMIT = 10;
 
@@ -14,7 +14,18 @@ export async function GET() {
 
   await connectDB();
 
-  const used = await GameAnalysis.countDocuments({ clerkUserId: userId });
+  const [used, profile] = await Promise.all([
+    GameAnalysis.countDocuments({ clerkUserId: userId }),
+    UserProfile.findOne({ clerkUserId: userId }, { plan: 1 }).lean(),
+  ]);
 
-  return NextResponse.json({ used, limit: LIFETIME_FREE_LIMIT, remaining: Math.max(0, LIFETIME_FREE_LIMIT - used) });
+  const isPaid = profile?.plan === 'paid';
+
+  return NextResponse.json({
+    used,
+    limit: LIFETIME_FREE_LIMIT,
+    // Infinity does not serialize to JSON — omit remaining for paid users; client derives from isPaid
+    ...(isPaid ? {} : { remaining: Math.max(0, LIFETIME_FREE_LIMIT - used) }),
+    isPaid,
+  });
 }

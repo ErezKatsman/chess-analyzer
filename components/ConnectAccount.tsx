@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { checkAndSetUserExist } from '@/lib/userUtils';
+import { checkAndSetUserExist } from '@/lib/utils/user';
 import { ONBOARDING_KEY, type OnboardingStoredData } from '@/components/OnboardingModal';
 import { QUICK_ANALYSIS_KEY } from '@/components/QuickAnalysisLoader';
 

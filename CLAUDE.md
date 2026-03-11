@@ -25,6 +25,8 @@ paywall converts when user sees their training score going up over time (ROI pro
 | Slice B | fix free tier: 3/month → 10 lifetime (via `GameAnalysis.countDocuments`) | ✅ done | `app/api/analyze/route.ts`, `app/api/user/quota/route.ts`, `lib/hooks/useAnalysisQuota.ts` |
 | Slice C | auto-analyze 5 games after first connect → redirect to Coach tab | ✅ done | `ConnectAccount.tsx`, `UserPageTabs.tsx`, new `QuickAnalysisLoader.tsx` |
 | Slice 1B | coaching-first post-analysis screen (CoachingSummary) | ✅ done | `QuickAnalysisLoader.tsx`, `UserPageTabs.tsx`, new `CoachingSummary.tsx` |
+| Slice E | CoachCheckIn — error rate trend card on Coach tab (templated, no AI) | ✅ done | `UserPageContent.tsx`, `UserPageTabs.tsx`, new `CoachCheckIn.tsx` |
+| Slice F | CoachingBrief — static teaching brief before drilling starts | ✅ done | `WeaknessDrills.tsx`, new `CoachingBrief.tsx` |
 | Slice D | weekly email digest | ⏳ not started | new scheduled task + email sender |
 
 **update this table when a slice completes.**

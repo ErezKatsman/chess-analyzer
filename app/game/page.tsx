@@ -4,7 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 
 import type { IGame } from '@/lib/interfaces/games';
 import type { TurningPoint, Pattern, BlunderExplanation } from '@/lib/interfaces/analysis';
-import { fetchGamesWithArchive, fetchMonthlyGames } from '@/lib/userUtils';
+import { fetchGamesWithArchive, fetchMonthlyGames } from '@/lib/utils/user';
 import { connectDB } from '@/lib/db/mongo';
 import { GameAnalysis } from '@/lib/db/schemas';
 import { GameReplay } from '@/components/GameReplay';

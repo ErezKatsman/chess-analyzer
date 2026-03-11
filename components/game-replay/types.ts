@@ -5,7 +5,7 @@ import type { TurningPoint, Pattern, BlunderExplanation } from '@/lib/interfaces
 
 export type { TurningPoint, Pattern, BlunderExplanation };
 
-export type QuotaState = { used: number; limit: number; remaining: number } | null;
+export type QuotaState = { used: number; limit: number; remaining?: number; isPaid?: boolean } | null;
 
 export type PlyEval = {
   ply: number;

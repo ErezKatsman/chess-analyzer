@@ -1,11 +1,11 @@
-// lib/userUtils.ts
-import type { IGame } from './interfaces/games';
+// lib/utils/user.ts
+import type { IGame } from '../interfaces/games';
 import {
   checkUserExists,
   fetchLatestMonthlyGames,
   fetchLatestMonthlyGamesWithArchive,
   fetchMonthlyGames,
-} from './services/chesscom';
+} from '../services/chesscom';
 
 export { checkUserExists, fetchMonthlyGames };
 
@@ -30,7 +30,6 @@ function normalizeUserName(raw: string): string {
 type SetBoolean = (next: boolean) => void;
 type SetNullableString = (next: string | null) => void;
 
-// preferred name (keep it exported for new code)
 export async function checkAndSetUserExists(
   setIsClickable: SetBoolean,
   setError: SetNullableString,
@@ -61,7 +60,7 @@ export async function checkAndSetUserExists(
   }
 }
 
-// backward compatible alias used by hero.tsx (keep until you update hero)
+// backward compatible alias used by ConnectAccount
 export const checkAndSetUserExist = checkAndSetUserExists;
 
 // backward compatible: now fetches the latest month automatically

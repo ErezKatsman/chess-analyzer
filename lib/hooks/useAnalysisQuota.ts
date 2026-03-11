@@ -20,20 +20,23 @@ type UseAnalysisQuotaReturn = {
 export function useAnalysisQuota(): UseAnalysisQuotaReturn {
   const [used, setUsed] = React.useState(0);
 
+  const [isPaid, setIsPaid] = React.useState(false);
+
   // fetch lifetime count from server on mount
   React.useEffect(() => {
     fetch('/api/user/quota')
       .then(r => r.json())
-      .then((data: { used?: number }) => {
+      .then((data: { used?: number; isPaid?: boolean }) => {
         if (typeof data.used === 'number') setUsed(data.used);
+        if (data.isPaid) setIsPaid(true);
       })
       .catch(() => {
         // silently ignore — server still gates via 402
       });
   }, []);
 
-  const remaining = Math.max(0, FREE_LIMIT - used);
-  const isAtLimit = used >= FREE_LIMIT;
+  const remaining = isPaid ? Infinity : Math.max(0, FREE_LIMIT - used);
+  const isAtLimit = !isPaid && used >= FREE_LIMIT;
 
   const consume = React.useCallback((): boolean => !isAtLimit, [isAtLimit]);
 
