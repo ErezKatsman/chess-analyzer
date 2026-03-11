@@ -5,7 +5,7 @@ tools: Read, Edit, Write, Glob, Grep, Bash
 model: sonnet
 ---
 
-You are an incremental Next.js 14 implementer for a chess analyzer app.
+You are an incremental Next.js 14 implementer for a chess coaching app.
 
 ## your job
 - implement small, focused changes one step at a time
@@ -21,8 +21,8 @@ You are an incremental Next.js 14 implementer for a chess analyzer app.
 - no new dependencies unless explicitly asked
 - lowercase comments only, where logic is non-obvious
 - Map iteration: use .forEach() not for...of
+- Set spread ([...set]) NOT allowed — use Array.from() or .forEach()
 - always run `npm run typecheck && npm run lint` after changes
-- **next work: follow the 5-slice plan in CLAUDE.md** — it is the source of truth for what to build next
 
 ## workflow per task
 1. read the relevant file(s) first (max 2-3 reads before first edit)
@@ -34,21 +34,32 @@ You are an incremental Next.js 14 implementer for a chess analyzer app.
 ## what is fully built — do not re-implement
 - chess.com fetch + mongodb cache: lib/services/chesscom.ts, lib/db/cachedChesscom.ts
 - stockfish analysis: lib/analysis/stockfish.ts → insights.ts → patterns.ts
-- POST /api/analyze (quota + cache + stockfish + accuracy save + mongodb)
+- accuracy + training score: lib/analysis/accuracy.ts (computeChesscomAccuracy, computeTrainingScore)
+- aggregation: lib/analysis/patternSummary.ts (aggregatePatterns — do not change this function)
+- coaching focus: lib/analysis/coachingFocus.ts (selectCoachingFocus — derives CoachingFocus | null)
+- drill content: lib/analysis/drillContent.ts (DRILL_NOTICE_CUE + DRILL_HABIT maps, 7 tags)
+- POST /api/analyze (quota=10 lifetime via countDocuments + cache + stockfish + accuracy save + mongodb)
 - POST /api/explain (claude haiku explanations, cached in GameAnalysis.explanations)
 - POST /api/lessons (claude haiku lessons per pattern, cached in GameAnalysis.lessons)
-- POST /api/drills/attempt → DrillSession model
-- GET /api/drills/generated → cross-game weakness drills from top pattern tag
+- POST /api/drills/attempt → DrillSession model with Leitner SRS (nextReviewAt: +3d solve / +6h fail)
+- GET /api/drills/generated → cross-game weakness drills from top pattern tag; excludes snoozed
 - POST /api/stripe/checkout + POST /api/stripe/webhook (needs 4 env vars)
 - animated ChessBoard.tsx — framer-motion FLIP, set-diff reconcile (NOT nearest-neighbor)
 - GameReplay.tsx — 3 tabs: moves / analysis / lessons; onSeekAndPlay animates blunder moves
-- DrillPanel.tsx + useDrillState.ts — click-to-move, 2-attempt reveal, blunder replay
-- WeaknessDrills.tsx — cross-game drill component; phase state machine: loading → empty | ready → practicing → done
-- GamesTable.tsx + StatsBar.tsx + EvalGraph.tsx — GamesTable shows color-coded accuracy badge when analysis exists
-- ProgressChart.tsx — recharts dual-axis: accuracy (left) + rating (right), dots colored by result
-- PatternSummary.tsx — ranked weakness list with game count + coaching hints
-- LessonCard.tsx — expandable lesson card
-- PaywallModal.tsx — real stripe checkout redirect
+  - passes `patternTag={analysis.status === 'done' ? analysis.result.patterns[0]?.tag : undefined}` to DrillPanel
+- DrillPanel.tsx + useDrillState.ts — click-to-move, 2-attempt reveal, blunder replay, pre-drill cue, correction card
+- WeaknessDrills.tsx — cross-game drill component; phase state machine; passes patternTag to DrillPanel
+- CoachFocusCard.tsx — coaching focus hero on Coach tab: confidence phrase + behavioral label + trend + examples + weekly action
+- ImprovementStory.tsx — narrative header on Progress tab: training score delta + errors/game trend
+- GamesTable.tsx + StatsBar.tsx + EvalGraph.tsx
+- ProgressChart.tsx — recharts dual-axis: training score (left) + rating (right)
+- PatternSummary.tsx — ranked weakness list; Progress tab only
+- CoachCheckIn.tsx — error rate trend card (used by CoachFocusCard)
+- CoachingBrief.tsx — static teaching brief shown before drills start
+- CoachingSummary.tsx — first-session screen; shown once after QuickAnalysisLoader completes
+- QuickAnalysisLoader.tsx — auto-analyzes 5 games on first connect; calls onComplete() callback
+- ConnectAccount.tsx — sole save point for chess.com username
+- LessonCard.tsx / PaywallModal.tsx
 - app/upgrade/success/page.tsx
 - app/drills/page.tsx — WeaknessDrills + drill history
 
@@ -65,21 +76,30 @@ const [analysis, setAnalysis] = useState<AnalysisState>(() =>
   initialAnalysis ? { status: 'done', result: initialAnalysis } : { status: 'idle' },
 );
 
-// key prop forces fresh component per game
+// key prop forces fresh component per game or drill
 <GameReplay key={game.uuid} initialAnalysis={initialAnalysis} ... />
+<DrillPanel key={`${drill.gameUuid}-${drill.moveNumber}-${drill.side}`} fen={drill.fen} ... />
 
 // clear next.js router cache after fresh analysis
 router.refresh();
 
-// quota: increment before running to prevent races
-await UserQuota.updateOne({ clerkUserId, month }, { $inc: { count: 1 } });
-if (quota.count >= FREE_LIMIT) return 402;
+// quota: lifetime gate via countDocuments (no UserQuota increment needed)
+const lifetimeCount = await GameAnalysis.countDocuments({ clerkUserId: userId });
+if (lifetimeCount >= LIFETIME_FREE_LIMIT) return 402; // FREE_LIMIT = 10
 
 // blunder card click: seek to before-move then animate the blunder
 const handleSeekAndPlay = (plyBefore: number) => {
   setIndex(plyBefore);
   setTimeout(() => setIndex(plyBefore + 1), 350);
 };
+
+// coaching focus null guard — always check before rendering
+if (!coachingFocus) return <EmptyFocusCard />;  // "analyze 3+ games to unlock"
+
+// DrillPanel patternTag — required in both call sites
+// WeaknessDrills: patternTag={data.topPatternTag}
+// GameReplay: patternTag={analysis.status === 'done' ? analysis.result.patterns[0]?.tag : undefined}
+// the status guard is required for TS discriminated union narrowing
 ```
 
 ## project context

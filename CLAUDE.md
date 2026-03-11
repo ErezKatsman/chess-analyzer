@@ -1,7 +1,9 @@
 # chess-analyzer — claude code guide
 
 ## product goal
-**chess improvement platform** — show players their weaknesses across ALL games, prove they're improving, give personalized drills. not just per-game analysis.
+**chess coaching platform** — identify recurring behavioral patterns across ALL games, give players a clear current focus, prove they're improving. not just per-game analysis.
+
+the product should feel like a coach, not a stats dashboard. the core unit is a **coaching focus**: one primary behavioral pattern + what to work on this week + proof of improvement over time.
 
 paywall converts when user sees their training score going up over time (ROI proof).
 
@@ -13,7 +15,7 @@ paywall converts when user sees their training score going up over time (ROI pro
 2. **first-session value matters most.** if the first 10 minutes don't deliver the core promise, nothing else matters.
 3. **training score is the only metric shown to users.** the accuracy/training toggle has been removed. only training score is displayed in the dashboard. accuracy is still stored in DB for internal use.
 4. **small slices only.** max 3 files per slice, ~150 LOC. read before edit. preserve existing behavior unless the change is intentional.
-5. **do not add features before fixing the core loop.** the loop is: play → analyze → see weakness → drill → see progress → return.
+5. **do not add features before fixing the core loop.** the loop is: play → analyze → identify recurring behavioral pattern → get coaching focus → work on it → see if it is improving → return.
 
 ---
 
@@ -28,6 +30,10 @@ paywall converts when user sees their training score going up over time (ROI pro
 | Slice E | CoachCheckIn — error rate trend card on Coach tab (templated, no AI) | ✅ done | `UserPageContent.tsx`, `UserPageTabs.tsx`, new `CoachCheckIn.tsx` |
 | Slice F | CoachingBrief — static teaching brief before drilling starts | ✅ done | `WeaknessDrills.tsx`, new `CoachingBrief.tsx` |
 | Slice D | weekly email digest | ⏳ not started | new scheduled task + email sender |
+| Slice G | coaching focus translation layer — `selectCoachingFocus()` + `FocusItem`/`CoachingFocus` types | ✅ done | `lib/interfaces/analysis.ts`, new `lib/analysis/coachingFocus.ts` |
+| Slice H | Coach tab restructure — `CoachFocusCard` replaces `CoachBanner`; `PatternSummary` moves to Progress tab only | ✅ done | new `components/CoachFocusCard.tsx`, `components/UserPageContent.tsx`, `components/UserPageTabs.tsx` |
+| Slice I | Progress tab restructure — `ImprovementStory` narrative header; `PatternSummary` as sole leaderboard location | ✅ done | new `components/ImprovementStory.tsx`, `components/UserPageTabs.tsx` |
+| Slice J | minimal drill connection — behavioral label in `WeaknessDrills` section header | ✅ done | `components/WeaknessDrills.tsx`, `app/api/drills/generated/route.ts` |
 
 **update this table when a slice completes.**
 
@@ -37,7 +43,9 @@ paywall converts when user sees their training score going up over time (ROI pro
 
 these are working correctly. do not modify until you have real user feedback or a specific reason:
 
-- `lib/analysis/` — entire folder (stockfish, insights, patterns, accuracy, progressUtils, patternSummary)
+- `lib/analysis/` — do not modify existing files; Slice G adds new `coachingFocus.ts` to this folder (additive only)
+  - specifically frozen: `stockfish.ts`, `insights.ts`, `patterns.ts`, `accuracy.ts`, `progressUtils.ts`
+  - `patternSummary.ts` — frozen; Slice G may add one new export but must NOT change `aggregatePatterns()`
 - `GameReplay.tsx` — complex, works, no user complaints
 - `ChessBoard.tsx` — FLIP animation is fragile; set-diff reconcile must not be changed
 - `DrillPanel.tsx` + `useDrillState.ts` — Leitner SRS works
@@ -86,8 +94,10 @@ FLOW 3 — connect chess.com account (first-time only)
 FLOW 4 — personal dashboard (signed in + has profile)
   / → UserPageContent basePath="/"
   → 4 tabs: Coach / Progress / Games / Profile
-  → Coach: sparkline + top weakness + PatternSummary
-  → Progress: ProgressChart (rating + training score over time)
+  → Coach (current — pre-Slice H): RatingHeroCard + CoachCheckIn + CoachBanner + PatternSummary
+  → Coach (target — Slice H): CoachFocusCard (focus + trend + examples + weekly action) + secondary focuses + RatingHeroCard
+  → Progress (current — pre-Slice I): ProgressChart + PatternSummary + drill markers
+  → Progress (target — Slice I): ImprovementStory + ProgressChart + PatternSummary (sole location)
   → Games: GamesTable with ✓ analyzed badges + analyze buttons
   → click Analyze → /game?... → GameReplay full analysis
   → drill practice at /drills (WeaknessDrills + per-game DrillPanel)
@@ -137,6 +147,9 @@ FLOW 6 — quota / paywall
 | dashboard tabs | ✅ | `UserPageTabs.tsx` — 4 tabs: Coach / Progress / Games / Profile |
 | first-session loader | ✅ | `QuickAnalysisLoader.tsx` — auto-analyzes 5 games; calls `onComplete()` callback when done |
 | coaching summary | ✅ | `CoachingSummary.tsx` — shown once after first-session; top weakness + drill cards + baseline score |
+| coaching focus layer | ⏳ Slice G | new `lib/analysis/coachingFocus.ts` — translates patterns + TPs → behavioral focus object |
+| coach focus card | ⏳ Slice H | new `components/CoachFocusCard.tsx` — focus hero on Coach tab |
+| improvement story | ⏳ Slice I | new `components/ImprovementStory.tsx` — narrative header on Progress tab |
 | profile tab | ✅ | plan badge (shows "10 lifetime analyses") + ChangeUsername + onboarding answers |
 | navbar | ✅ | lucide icons + active tab highlight |
 | browse mode | ✅ | Hero → `/user?userName=X` (no auth, no personal data) |
@@ -150,6 +163,110 @@ FLOW 6 — quota / paywall
 - `trainingScoreRecord` (uuid→{white,black}) computed server-side in `UserPageContent` from `avgCpLoss`
 - training score is always used; the accuracy/training toggle has been removed; `accuracyRecord` still computed server-side but is not displayed
 - GamesTable badge thresholds: training score green≥70 / yellow≥50 / red<50
+
+---
+
+## coaching focus architecture (Slices G + H)
+
+### product direction
+broad tags (`tactics`, `opening`, etc.) remain **internal buckets only**. the user-facing layer is a behavioral focus derived from those tags + actual turning point data. the product says "you leave pieces undefended" not "you have a tactics weakness."
+
+### types (to be added to `lib/interfaces/analysis.ts` in Slice G)
+```ts
+// pulled from TurningPoint.oneLineReason — already stored in DB; no new data needed
+type FocusExample = {
+  gameUuid: string;
+  moveNumber: number;
+  side: 'white' | 'black';
+  oneLineReason: string;
+};
+
+type FocusItem = {
+  tag: Pattern['tag'];              // internal — used for routing, drill filtering, icons
+  behavioralLabel: string;         // user-facing: "you leave pieces undefended"
+  shortExplanation: string;        // templated: "This happened X times in your last Y games"
+  weeklyAction: string;            // 1 concrete sentence, hard-coded per behavioral label
+  examples: FocusExample[];        // 2–3 from most recent TPs matching this tag
+  score: number;                   // decayed score from aggregatePatterns()
+  gameCount: number;               // raw count from PatternSummaryEntry
+  confidence: 'low' | 'medium' | 'high';
+};
+
+type CoachingFocus = {
+  primary: FocusItem;
+  secondary: FocusItem[];          // up to 2; never more
+  trend: ProgressData | null;      // reuses existing ProgressData from CoachCheckIn
+  hasEnoughData: boolean;          // false when totalAnalyzed < 3; gates assertive phrasing
+};
+```
+
+### behavioral label map (v1 — hard-coded, derived from TPs at display time)
+| tag | derivation condition | `behavioralLabel` | `weeklyAction` |
+|---|---|---|---|
+| `tactics` | blunder, `Math.abs(evalBefore) ≤ 150` (not already losing) | "you leave pieces undefended" | "Before each move, ask: can my opponent take anything for free?" |
+| `tactics` | blunder, `bestMove` UCI targets occupied square | "you miss what your opponent can take" | "After your opponent moves, ask: what are they threatening?" |
+| `opening` | TPs in moves 1–10 | "you fall behind in the opening" | "Focus on developing pieces, controlling the center, and castling before move 12." |
+| `opening` | TPs in moves 10–15, king still uncastled | "your development falls behind" | "Castle before move 12. Uncastled kings in the middlegame are a liability." |
+| `king-safety` | any | "you castle too late" | "Make castling your top priority unless you are winning material." |
+| `strategy` | any | "you make careless moves in quiet positions" | "In quiet positions, ask: what is my plan? Aimless moves invite your opponent to improve." |
+| `endgame` | any | "you lose good positions in the endgame" | "Activate your king immediately in endgames — passive kings lose won positions." |
+| `time-trouble` | any | "your accuracy drops late in the game" | "Use your first moves faster to save time for complex middlegame positions." |
+
+default fallback for unknown tag: `behavioralLabel = TAG_LABEL[tag]`, `weeklyAction = topHint` from `PatternSummaryEntry`.
+
+### confidence gates
+| confidence | gameCount | phrasing prefix |
+|---|---|---|
+| `low` | < 3 | "I'm starting to notice..." |
+| `medium` | 3–4 | "I'm seeing a pattern..." |
+| `high` | ≥ 5 | "Your biggest challenge right now is..." |
+
+when `hasEnoughData === false` (total analyzed < 3): render "analyze at least 3 games to unlock your coaching focus." — do not render a `FocusItem`.
+
+### primary vs secondary selection
+```ts
+// primary  = patternEntries[0] — already sorted by decayed score from aggregatePatterns()
+// secondary = patternEntries[1..2] — up to 2; shorter display, no examples
+// patternEntries comes from the existing aggregatePatterns() call — do not re-sort
+```
+
+### what is derived vs stored (v1)
+- **derive on every server render** — behavioral label, short explanation, weekly action, examples, confidence. no new DB fields.
+- **store unchanged** — `PatternSummaryEntry[]` from `aggregatePatterns()`, `ProgressData` from `computeProgressData()`
+- **out of scope for v1** — stored focus date, focus history, AI-generated labels, per-focus drill curriculum, stability storage in `UserProfile`
+
+### new file: `lib/analysis/coachingFocus.ts` (Slice G)
+```ts
+// input: output of aggregatePatterns() + allAnalyzed slice + progressData from computeProgressData()
+// output: CoachingFocus | null (null when totalAnalyzed < 3)
+export function selectCoachingFocus(
+  patternEntries: PatternSummaryEntry[],
+  allAnalyzed: { patterns: Pattern[]; turningPoints: TurningPoint[]; gameUuid: string; analyzedAt: Date }[],
+  progressData: ProgressData | null,
+): CoachingFocus | null
+
+// called internally by selectCoachingFocus — pick best behavioral label for a tag
+// uses most recent TPs matching the tag to determine sub-type
+function deriveBehavioralLabel(tag: Pattern['tag'], recentTPs: TurningPoint[]): string
+```
+
+### coach tab target layout (post Slice H)
+```
+[CoachFocusCard]       ← hero: confidence phrase + behavioral label + trend inline + 2–3 examples + weekly action + CTA
+[secondary focuses]    ← compact: "Also tracking: [label1] · [label2]"
+[RatingHeroCard]       ← demoted to bottom; still shown, less visual weight
+```
+removed from Coach tab after Slice H: `CoachBanner`, standalone `CoachCheckIn` (its data moves into `CoachFocusCard.trend`), `PatternSummary`
+
+### progress tab target layout (post Slice I)
+```
+[ImprovementStory]     ← narrative: "training score X→Y; your [focus] errors down from X to Y"
+[ProgressChart]        ← unchanged
+[PatternSummary]       ← now the only place in the product this appears
+```
+
+### coach focus card null guard (important)
+`CoachFocusCard` receives `CoachingFocus | null`. when null: render a single muted card "analyze at least 3 games to see your coaching focus." do not crash or show empty space.
 
 ---
 
@@ -233,7 +350,9 @@ components/
   Navbar.tsx                      lucide icons + active tab (pathname='/' only)
   WeaknessDrills.tsx              cross-game drill component (phase state machine)
   ProgressChart.tsx               recharts dual-axis (rating + training score over time)
-  PatternSummary.tsx              ranked weakness list with coaching hints
+  PatternSummary.tsx              ranked weakness list with coaching hints (Progress tab only post Slice H)
+  CoachFocusCard.tsx              (new — Slice H) coaching focus hero — behavioral label + trend + examples + weekly action
+  ImprovementStory.tsx            (new — Slice I) narrative header for Progress tab
   game-replay/
     MovesList.tsx                 all-move annotations via moveQualityMap + auto-scroll
     AnalysisPanel.tsx             narrative + accuracy cards + errors + patterns
@@ -249,6 +368,7 @@ components/
 
 lib/
   analysis/                       stockfish.ts, insights.ts, patterns.ts, progressUtils.ts, patternSummary.ts
+                                  coachingFocus.ts (new — Slice G): selectCoachingFocus(), deriveBehavioralLabel()
   chess/                          moves.ts, pgn.ts
   db/                             mongo.ts, schemas.ts, cachedChesscom.ts, gamesCache.ts
   hooks/useAnalysisQuota.ts
@@ -337,7 +457,8 @@ games older than 60 days get weight 0 regardless of index.
 ### derived metrics (power the Coach + Progress tabs)
 | metric | source | used in |
 |---|---|---|
-| weakness leaderboard | pattern tags × recency weights | Coach tab PatternSummary |
+| weakness leaderboard | pattern tags × recency weights | Progress tab PatternSummary (Coach tab post Slice H) |
+| coaching focus | `selectCoachingFocus()` → behavioral label + examples + weekly action | Coach tab CoachFocusCard (Slice G+H) |
 | training score trend | `GameAnalysis.avgCpLoss[playerSide]` → `computeTrainingScore()` per game × date | Progress tab ProgressChart |
 | phase breakdown | pattern tag buckets: opening/middlegame/endgame | Progress tab (future) |
 | openings report | first 6 moves + ECO + win/loss/draw | placeholder — not built yet |

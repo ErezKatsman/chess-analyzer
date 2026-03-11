@@ -378,6 +378,7 @@ export function GameReplay({
         drillIndex={drillIndex}
         totalDrills={drills.length}
         gameUuid={uuid}
+        patternTag={analysis.status === 'done' ? analysis.result.patterns[0]?.tag : undefined}
         onNext={drillIndex < drills.length - 1 ? () => setDrillIndex(drillIndex + 1) : undefined}
         onExit={() => setDrillIndex(null)}
       />

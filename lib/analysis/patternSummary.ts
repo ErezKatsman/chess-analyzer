@@ -8,6 +8,7 @@ export type PatternSummaryEntry = {
   tag: Pattern['tag'];
   gameCount: number; // raw count of distinct games showing this tag (no decay)
   topHint: string;   // most recent coaching hint for this tag
+  score: number;     // recency-decayed confidence score from aggregatePatterns()
 };
 
 // tag display labels — ordered for rendering
@@ -88,11 +89,12 @@ export function aggregatePatterns(
   });
 
   const result: PatternSummaryEntry[] = [];
-  scoreMap.forEach((_, tag) => {
+  scoreMap.forEach((score, tag) => {
     result.push({
       tag,
       gameCount: countMap.get(tag) ?? 0,
       topHint: hintMap.get(tag) ?? '',
+      score,
     });
   });
 

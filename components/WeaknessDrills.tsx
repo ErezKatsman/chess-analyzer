@@ -11,6 +11,7 @@ type ApiData = {
   drills: GeneratedDrill[];
   topPatternTag: string;
   topPatternLabel: string;
+  behavioralLabel?: string; // user-facing: "you leave pieces undefended" — added in Slice J
   topPatternGameCount: number;
 };
 
@@ -62,6 +63,7 @@ export function WeaknessDrills() {
         evalBefore={drill.evalBefore}
         evalAfter={drill.evalAfter}
         gameUuid={drill.gameUuid}
+        patternTag={data.topPatternTag}
         drillIndex={index}
         totalDrills={data.drills.length}
         onNext={() => {
@@ -86,7 +88,7 @@ export function WeaknessDrills() {
               session complete
             </p>
             <h2 className="text-lg font-semibold">
-              you practiced {data.drills.length} {data.topPatternLabel} drill{data.drills.length !== 1 ? 's' : ''} ⚡
+              {data.drills.length} drill{data.drills.length !== 1 ? 's' : ''} · {data.behavioralLabel ?? data.topPatternLabel} ⚡
             </h2>
             <p className="text-sm text-muted-foreground">
               results saved — check your drill log below
@@ -111,10 +113,10 @@ export function WeaknessDrills() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            practice your weakness
+            your coaching focus
           </p>
           <h2 className="text-lg font-semibold">
-            {data.topPatternLabel}
+            {data.behavioralLabel ?? data.topPatternLabel}
             {data.topPatternGameCount > 0 && (
               <span className="text-primary">
                 {' '}· {data.topPatternGameCount} game{data.topPatternGameCount !== 1 ? 's' : ''}

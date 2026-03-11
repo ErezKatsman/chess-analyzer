@@ -25,6 +25,7 @@ export type DrillProps = {
   drillIndex: number; // 0-based, for "drill 1 of N" display
   totalDrills: number;
   gameUuid?: string; // used to save drill session to mongodb
+  patternTag?: string; // weakness tag — enables pre-drill notice cue + post-failure correction card
   onNext?: () => void;
   onExit: () => void;
 };

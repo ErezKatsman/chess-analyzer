@@ -9,6 +9,20 @@ import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
 import type { PositionEval } from '@/lib/analysis/stockfish';
 import { TAG_LABEL } from '@/lib/analysis/patternSummary';
 
+// static behavioral label per tag — uses the same wording as coachingFocus.ts fixed-label entries.
+// does not attempt tactics/opening sub-disambiguation (requires TP analysis not available here).
+// known v1 residual: tactics may show "you leave pieces undefended" on Drills while the Coach tab
+// shows the alt variant "you overlook your opponent's threats" — acceptable until labels are unified.
+const BEHAVIORAL_LABEL: Record<string, string> = {
+  tactics:        'you leave pieces undefended',
+  opening:        'you fall behind in the opening',
+  endgame:        'your technique slips in endgames',
+  strategy:       'your plans drift in quiet positions',
+  'time-trouble': 'your accuracy drops late in the game',
+  calculation:    'you miss key moves in sharp positions',
+  'king-safety':  'you castle too late',
+};
+
 export type GeneratedDrill = {
   fen: string;
   bestMove: string;
@@ -121,12 +135,14 @@ export async function GET() {
   // shuffle so repeated visits feel fresh, then cap at MAX_DRILLS
   const shuffled = drills.sort(() => Math.random() - 0.5).slice(0, MAX_DRILLS);
 
-  const topPatternLabel = (TAG_LABEL as Record<string, string>)[topTag] ?? topTag;
+  const topPatternLabel   = (TAG_LABEL as Record<string, string>)[topTag] ?? topTag;
+  const behavioralLabel   = BEHAVIORAL_LABEL[topTag] ?? topPatternLabel;
 
   return NextResponse.json({
     drills: shuffled,
     topPatternTag: topTag,
     topPatternLabel,
+    behavioralLabel,
     topPatternGameCount: topCount,
     dueCount,
   });

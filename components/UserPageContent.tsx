@@ -16,7 +16,8 @@ import { computeTrainingScore } from '@/lib/analysis/accuracy';
 import { aggregatePatterns, TAG_LABEL } from '@/lib/analysis/patternSummary';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry, GamePatternEntry } from '@/lib/analysis/patternSummary';
-import type { ProgressData } from '@/components/CoachCheckIn';
+import type { ProgressData, CoachingFocus, CoachingFocusGameSlice } from '@/lib/interfaces/analysis';
+import { selectCoachingFocus } from '@/lib/analysis/coachingFocus';
 import type { PositionEval } from '@/lib/analysis/stockfish';
 import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
 
@@ -133,6 +134,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
   let accuracyRecord: Record<string, { white: number; black: number }> = {};
   let trainingScoreRecord: Record<string, { white: number; black: number }> = {};
   let progressData: ProgressData | null = null;
+  let coachingFocus: CoachingFocus | null = null;
 
   // only load personal analysis on the home dashboard, not on public browse pages
   if (userId && basePath === '/') {
@@ -216,6 +218,21 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
         progressData = computeProgressData(slices, focusTag, recentDrillCount);
       }
 
+      // derive behavioral coaching focus from aggregated patterns + turning points
+      const allAnalyzedSlices: CoachingFocusGameSlice[] = allAnalyzed.map((a) => ({
+        gameUuid: a.gameUuid as string,
+        playerSide: a.playerSide as 'white' | 'black',
+        patterns: (a.patterns ?? []) as Pattern[],
+        turningPoints: (a.turningPoints ?? []) as TurningPoint[],
+        analyzedAt: a.analyzedAt instanceof Date ? a.analyzedAt : new Date(a.analyzedAt as Date),
+      }));
+      coachingFocus = selectCoachingFocus(
+        patternEntries,
+        allAnalyzedSlices,
+        allAnalyzed.length,
+        progressData,
+      );
+
       // group drill sessions by day — one marker per day practiced
       const seenDays = new Set<number>();
       drillDocs.forEach((d) => {
@@ -278,7 +295,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
           profileData={profileData}
           accuracyRecord={accuracyRecord}
           trainingScoreRecord={trainingScoreRecord}
-          progressData={progressData}
+          coachingFocus={coachingFocus}
         />
       </div>
     </main>

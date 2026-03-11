@@ -13,11 +13,12 @@ import { ProgressChart, type ChartPoint } from '@/components/ProgressChart';
 import { PatternSummary } from '@/components/PatternSummary';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { RatingHeroCard } from '@/components/RatingHeroCard';
-import { CoachBanner } from '@/components/CoachBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { QuickAnalysisLoader, QUICK_ANALYSIS_KEY } from '@/components/QuickAnalysisLoader';
 import { CoachingSummary, COACHING_SUMMARY_KEY } from '@/components/CoachingSummary';
-import { CoachCheckIn, type ProgressData } from '@/components/CoachCheckIn';
+import { CoachFocusCard } from '@/components/CoachFocusCard';
+import { ImprovementStory } from '@/components/ImprovementStory';
+import type { CoachingFocus } from '@/lib/interfaces/analysis';
 
 export type ProfileData = {
   plan: 'free' | 'paid';
@@ -46,7 +47,8 @@ interface Props {
   accuracyRecord?: Record<string, { white: number; black: number }>;
   // per-game player training score: uuid → { white, black } — derived from avgCpLoss
   trainingScoreRecord?: Record<string, { white: number; black: number }>;
-  progressData?: ProgressData | null;
+  // behavioral coaching focus — derived server-side by selectCoachingFocus(); null when < 3 games
+  coachingFocus?: CoachingFocus | null;
 }
 
 const OWNER_TABS: { key: Tab; label: string }[] = [
@@ -74,7 +76,7 @@ export function UserPageTabs({
   profileData,
   accuracyRecord,
   trainingScoreRecord,
-  progressData,
+  coachingFocus,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -241,14 +243,8 @@ export function UserPageTabs({
         <div className="space-y-6">
           {hasInsights ? (
             <>
-              <CoachCheckIn progressData={progressData ?? null} />
-              <div className="grid gap-6 lg:grid-cols-2">
-                <RatingHeroCard progressPoints={progressPoints} />
-                {patternEntries[0] && (
-                  <CoachBanner topPattern={patternEntries[0]} totalGames={progressPoints.length} />
-                )}
-              </div>
-              <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
+              <CoachFocusCard coachingFocus={coachingFocus ?? null} />
+              <RatingHeroCard progressPoints={progressPoints} />
             </>
           ) : (
             <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
@@ -299,10 +295,12 @@ export function UserPageTabs({
 
       {/* ── Progress tab ── */}
       {tab === 'progress' && isOwner && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          <ImprovementStory coachingFocus={coachingFocus ?? null} progressPoints={progressPoints} />
+          <div className="grid gap-6 lg:grid-cols-2">
           <section className="rounded-2xl border bg-card p-6 shadow-sm">
             <div className="flex items-start justify-between gap-4 mb-1">
-              <h2 className="text-sm font-semibold">your progress</h2>
+              <h2 className="text-sm font-semibold">rating &amp; score over time</h2>
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 {/* time-class filter pills */}
                 {availableTcs.length > 1 && (
@@ -337,6 +335,7 @@ export function UserPageTabs({
             <ProgressChart data={allChartPoints} drillMarkers={drillMarkers} />
           </section>
           <PatternSummary entries={patternEntries} totalGames={progressPoints.length} />
+          </div>
         </div>
       )}
 
