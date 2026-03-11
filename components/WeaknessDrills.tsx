@@ -4,6 +4,7 @@
 // fetches /api/drills/generated → shows a teaser card → sequences through DrillPanel.
 import { useState, useEffect } from 'react';
 import { DrillPanel } from '@/components/DrillPanel';
+import { CoachingBrief } from '@/components/CoachingBrief';
 import type { GeneratedDrill } from '@/app/api/drills/generated/route';
 
 type ApiData = {
@@ -102,9 +103,10 @@ export function WeaknessDrills() {
     );
   }
 
-  // ready — teaser card
+  // ready — teaser card + coaching brief
   const { data } = phase;
   return (
+    <>
     <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
@@ -131,5 +133,7 @@ export function WeaknessDrills() {
         </button>
       </div>
     </div>
+    <CoachingBrief tag={data.topPatternTag} gameCount={data.topPatternGameCount} />
+    </>
   );
 }

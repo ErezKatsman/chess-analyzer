@@ -13,11 +13,70 @@ import type { ProfileData } from '@/components/UserPageTabs';
 import { ChangeUsernameButton } from '@/components/ChangeUsernameButton';
 import { buildProgressPoint } from '@/lib/analysis/progressUtils';
 import { computeTrainingScore } from '@/lib/analysis/accuracy';
-import { aggregatePatterns } from '@/lib/analysis/patternSummary';
+import { aggregatePatterns, TAG_LABEL } from '@/lib/analysis/patternSummary';
 import type { ProgressPoint } from '@/lib/analysis/progressUtils';
 import type { PatternSummaryEntry, GamePatternEntry } from '@/lib/analysis/patternSummary';
+import type { ProgressData } from '@/components/CoachCheckIn';
 import type { PositionEval } from '@/lib/analysis/stockfish';
 import type { TurningPoint, Pattern } from '@/lib/interfaces/analysis';
+
+type AnalyzedGameSlice = { patterns: object[]; analyzedAt: Date };
+type PatternLike = { tag: string; evidenceMoves?: number[] };
+
+// computes per-game error rate for the focus weakness tag across two 5-game windows.
+// returns null when any gating condition fails — renders nothing rather than misleading data.
+function computeProgressData(
+  allAnalyzed: AnalyzedGameSlice[],
+  focusTag: Pattern['tag'],
+  drillsCompleted: number,
+): ProgressData | null {
+  if (allAnalyzed.length < 10) return null;
+
+  // sort by analyzedAt desc, take 10 most recent
+  const sorted = [...allAnalyzed]
+    .sort((a, b) => new Date(b.analyzedAt).getTime() - new Date(a.analyzedAt).getTime())
+    .slice(0, 10);
+
+  const recent = sorted.slice(0, 5);    // most recent 5
+  const previous = sorted.slice(5, 10); // previous 5
+
+  // count evidenceMoves for focus tag in a window
+  function errorCount(window: AnalyzedGameSlice[]): number {
+    return window.reduce((sum, game) => {
+      const match = (game.patterns as PatternLike[]).find((p) => p.tag === focusTag);
+      return sum + (match?.evidenceMoves?.length ?? 0);
+    }, 0);
+  }
+
+  // gate: focus tag must appear in ≥3 of the 10 games
+  const gamesWithTag = sorted.filter((game) =>
+    (game.patterns as PatternLike[]).some((p) => p.tag === focusTag),
+  ).length;
+  if (gamesWithTag < 3) return null;
+
+  const recentErrors = errorCount(recent);
+  const previousErrors = errorCount(previous);
+
+  // gate: need a baseline — if previous window has no errors there's nothing to compare against
+  if (previousErrors === 0) return null;
+
+  // round to 1 decimal for display; compare raw values for threshold
+  const recentRate = Math.round((recentErrors / 5) * 10) / 10;
+  const previousRate = Math.round((previousErrors / 5) * 10) / 10;
+  const delta = recentRate - previousRate;
+  const trend: ProgressData['trend'] =
+    delta <= -0.5 ? 'improving' :
+    delta >= 0.5  ? 'needs-attention' :
+    'holding';
+
+  return {
+    focusLabel: TAG_LABEL[focusTag],
+    recentRate,
+    previousRate,
+    trend,
+    drillsCompleted,
+  };
+}
 
 interface Props {
   userName: string;
@@ -73,6 +132,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
   let profileData: ProfileData | null = null;
   let accuracyRecord: Record<string, { white: number; black: number }> = {};
   let trainingScoreRecord: Record<string, { white: number; black: number }> = {};
+  let progressData: ProgressData | null = null;
 
   // only load personal analysis on the home dashboard, not on public browse pages
   if (userId && basePath === '/') {
@@ -85,7 +145,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
         ).lean(),
         DrillSession.find(
           { clerkUserId: userId, solved: true },
-          { createdAt: 1 },
+          { createdAt: 1, solvedAt: 1 },
         ).lean(),
         UserProfile.findOne(
           { clerkUserId: userId },
@@ -141,6 +201,20 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
         gamePatternEntries,
         profileData?.selfReportedWeakness,
       );
+
+      // compute coach check-in card (returns null when gating conditions aren't met)
+      const focusTag = patternEntries[0]?.tag;
+      if (focusTag) {
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        const recentDrillCount = drillDocs.filter(
+          (d) => d.solvedAt && new Date(d.solvedAt as Date).getTime() >= fourteenDaysAgo.getTime(),
+        ).length;
+        const slices: AnalyzedGameSlice[] = allAnalyzed.map((a) => ({
+          patterns: (a.patterns ?? []) as object[],
+          analyzedAt: a.analyzedAt instanceof Date ? a.analyzedAt : new Date(a.analyzedAt as Date),
+        }));
+        progressData = computeProgressData(slices, focusTag, recentDrillCount);
+      }
 
       // group drill sessions by day — one marker per day practiced
       const seenDays = new Set<number>();
@@ -204,6 +278,7 @@ export async function UserPageContent({ userName, year, month, basePath = '/user
           profileData={profileData}
           accuracyRecord={accuracyRecord}
           trainingScoreRecord={trainingScoreRecord}
+          progressData={progressData}
         />
       </div>
     </main>

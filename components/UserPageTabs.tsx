@@ -17,6 +17,7 @@ import { CoachBanner } from '@/components/CoachBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { QuickAnalysisLoader, QUICK_ANALYSIS_KEY } from '@/components/QuickAnalysisLoader';
 import { CoachingSummary, COACHING_SUMMARY_KEY } from '@/components/CoachingSummary';
+import { CoachCheckIn, type ProgressData } from '@/components/CoachCheckIn';
 
 export type ProfileData = {
   plan: 'free' | 'paid';
@@ -45,6 +46,7 @@ interface Props {
   accuracyRecord?: Record<string, { white: number; black: number }>;
   // per-game player training score: uuid → { white, black } — derived from avgCpLoss
   trainingScoreRecord?: Record<string, { white: number; black: number }>;
+  progressData?: ProgressData | null;
 }
 
 const OWNER_TABS: { key: Tab; label: string }[] = [
@@ -72,6 +74,7 @@ export function UserPageTabs({
   profileData,
   accuracyRecord,
   trainingScoreRecord,
+  progressData,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -238,6 +241,7 @@ export function UserPageTabs({
         <div className="space-y-6">
           {hasInsights ? (
             <>
+              <CoachCheckIn progressData={progressData ?? null} />
               <div className="grid gap-6 lg:grid-cols-2">
                 <RatingHeroCard progressPoints={progressPoints} />
                 {patternEntries[0] && (
