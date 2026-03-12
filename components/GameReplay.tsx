@@ -46,6 +46,7 @@ export function GameReplay({
   archiveYear,
   archiveMonth,
   pgn,
+  primaryFocusTag,
 }: Props) {
   const router = useRouter();
 
@@ -664,6 +665,7 @@ export function GameReplay({
             onStartDrills={() => setDrillIndex(0)}
             playerSide={isWhite ? 'white' : 'black'}
             accuracy={accuracy}
+            primaryFocusTag={primaryFocusTag}
           />
         ) : null /* end analysis tab */}
 

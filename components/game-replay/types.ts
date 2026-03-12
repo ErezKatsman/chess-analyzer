@@ -52,4 +52,6 @@ export type GameReplayProps = {
   pgn: string;
   // true when the stored analysisVersion is older than CURRENT_VERSION
   isStale?: boolean;
+  // user's top pattern tag across all games — used for focus feedback banner in analysis tab
+  primaryFocusTag?: string;
 };

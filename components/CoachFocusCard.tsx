@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { CoachingFocus, FocusItem, ProgressData } from '@/lib/interfaces/analysis';
+import { getExampleCue } from '@/lib/analysis/coachingFocus';
 
 const TAG_ICON: Record<string, string> = {
   opening:      '♟',
@@ -67,6 +68,17 @@ function PrimaryFocusBlock({ item, trend }: { item: FocusItem; trend: ProgressDa
         <p className="mt-1 text-sm text-muted-foreground">{item.shortExplanation}</p>
       </div>
 
+      {/* focus context — M2: root cause + what to notice */}
+      {item.rootCause && (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground leading-relaxed">{item.rootCause}</p>
+          <p className="text-sm">
+            <span className="font-medium">What to notice: </span>
+            {item.whatToNotice}
+          </p>
+        </div>
+      )}
+
       {/* trend inline */}
       {trend && <TrendBadge trend={trend} />}
 
@@ -78,12 +90,17 @@ function PrimaryFocusBlock({ item, trend }: { item: FocusItem; trend: ProgressDa
             {item.examples.map((ex) => (
               <li
                 key={`${ex.gameUuid}-${ex.moveNumber}`}
-                className="flex items-start gap-2 text-sm"
+                className="flex flex-col gap-0.5 text-sm"
               >
-                <span className="text-muted-foreground shrink-0 tabular-nums">
-                  move {ex.moveNumber}
-                </span>
-                <span>{ex.oneLineReason}</span>
+                <div className="flex items-start gap-2">
+                  <span className="text-muted-foreground shrink-0 tabular-nums">
+                    move {ex.moveNumber}
+                  </span>
+                  <span>{ex.oneLineReason}</span>
+                </div>
+                <p className="pl-[4.5rem] text-xs text-muted-foreground italic">
+                  {getExampleCue(item.tag, ex.tpType, ex.evalBefore)}
+                </p>
               </li>
             ))}
           </ul>

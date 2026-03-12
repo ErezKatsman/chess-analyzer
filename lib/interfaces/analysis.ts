@@ -113,6 +113,8 @@ export type FocusExample = {
   moveNumber: number;
   side: 'white' | 'black';
   oneLineReason: string; // from TurningPoint.oneLineReason — already stored in DB
+  tpType: TurningPoint['type'];   // used to pick per-example teaching cue (M3)
+  evalBefore: number | null;      // cp from mover perspective — gives position context to cue (M3)
 };
 
 // one coaching focus item (primary or secondary)
@@ -121,6 +123,8 @@ export type FocusItem = {
   behavioralLabel: string;   // user-facing full label: "you leave pieces undefended"
   shortLabel: string;        // compact chip label: "hanging pieces" (≤3 words)
   shortExplanation: string;  // "Came up in X of your Y analyzed games"
+  rootCause: string;         // 2 sentences: why this happens + typical context (M2)
+  whatToNotice: string;      // 1-sentence cue to build the habit (M2)
   weeklyAction: string;      // 1 concrete sentence, hard-coded per behavioral label
   examples: FocusExample[];  // 2–3 from most recent TPs; empty for secondary items
   score: number;             // decayed score from aggregatePatterns() — higher = more persistent

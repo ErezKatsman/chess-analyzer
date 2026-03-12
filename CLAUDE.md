@@ -34,6 +34,12 @@ paywall converts when user sees their training score going up over time (ROI pro
 | Slice H | Coach tab restructure — `CoachFocusCard` replaces `CoachBanner`; `PatternSummary` moves to Progress tab only | ✅ done | new `components/CoachFocusCard.tsx`, `components/UserPageContent.tsx`, `components/UserPageTabs.tsx` |
 | Slice I | Progress tab restructure — `ImprovementStory` narrative header; `PatternSummary` as sole leaderboard location | ✅ done | new `components/ImprovementStory.tsx`, `components/UserPageTabs.tsx` |
 | Slice J | minimal drill connection — behavioral label in `WeaknessDrills` section header | ✅ done | `components/WeaknessDrills.tsx`, `app/api/drills/generated/route.ts` |
+| Slice M2 | coaching focus context block — rootCause + whatToNotice per behavioral label | ✅ done | `lib/interfaces/analysis.ts`, `lib/analysis/coachingFocus.ts`, `components/CoachFocusCard.tsx` |
+| Slice M3 | per-example teaching cues — evalBefore-aware cue per game moment in CoachFocusCard | ✅ done | `lib/interfaces/analysis.ts`, `lib/analysis/coachingFocus.ts`, `components/CoachFocusCard.tsx` |
+| Slice N2 | pre-drill coach setup card — what happened + position-specific "what to look for" cue | ✅ done | `lib/analysis/drillContent.ts`, `components/DrillPanel.tsx` |
+| Slice N1 | post-analysis focus feedback banner in GameReplay analysis tab | ✅ done | `app/game/page.tsx`, `components/game-replay/types.ts`, `components/GameReplay.tsx`, `components/game-replay/AnalysisPanel.tsx` |
+| fix: explain retry | partial explanation cache check — retries if any expected IDs are missing | ✅ done | `app/api/explain/route.ts` |
+| Slice D | weekly email digest | ⏳ not started | new scheduled task + email sender |
 
 **update this table when a slice completes.**
 
@@ -53,7 +59,8 @@ these are working correctly. do not modify until you have real user feedback or 
 - `middleware.ts` — route protection is correct
 - `lib/db/schemas.ts` — do not add fields without a specific slice requiring it
 - `OnboardingModal.tsx` — overbuilt but not blocking; delay simplification until after user testing
-- `app/api/explain/route.ts` + `app/api/lessons/route.ts` — AI routes work, caching is correct
+- `app/api/lessons/route.ts` — AI lessons work, caching is correct
+- `app/api/explain/route.ts` — explanation retry now checks all expected IDs, not just length > 0
 - `UserQuota` collection — leave in place after Slice B (harmless, useful as fallback reference)
 - Stripe code — done; only needs env vars. do not touch the code.
 

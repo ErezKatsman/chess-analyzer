@@ -50,8 +50,17 @@ export async function POST(request: Request) {
       { explanations: 1 },
     ).lean();
 
-    if (saved?.explanations && saved.explanations.length > 0) {
-      return NextResponse.json({ explanations: saved.explanations, fromCache: true });
+    if (saved?.explanations && (saved.explanations as BlunderExplanation[]).length > 0) {
+      // verify ALL expected ids are present — a partial save won't be used as cache
+      const savedIds = new Set((saved.explanations as BlunderExplanation[]).map(e => e.id));
+      const expectedIds = turningPoints
+        .filter(tp => EXPLAIN_TYPES.has(tp.type))
+        .map(tp => `${tp.moveNumber}-${tp.side}`);
+      const allPresent = expectedIds.every(id => savedIds.has(id));
+      if (allPresent) {
+        return NextResponse.json({ explanations: saved.explanations, fromCache: true });
+      }
+      // partial save — fall through to regenerate all and overwrite
     }
   }
 

@@ -153,14 +153,21 @@ export default async function GamePage({ searchParams }: GamePageProps) {
     explanations: BlunderExplanation[];
   } | null = null;
   let isStale = false;
+  let primaryFocusTag: string | undefined;
 
   if (userId) {
     try {
       await connectDB();
-      const cached = await GameAnalysis.findOne(
-        { clerkUserId: userId, gameUuid: uuid },
-        { evals: 1, turningPoints: 1, patterns: 1, explanations: 1, analysisVersion: 1 },
-      ).lean();
+      const [cached, allAnalyzed] = await Promise.all([
+        GameAnalysis.findOne(
+          { clerkUserId: userId, gameUuid: uuid },
+          { evals: 1, turningPoints: 1, patterns: 1, explanations: 1, analysisVersion: 1 },
+        ).lean(),
+        GameAnalysis.find(
+          { clerkUserId: userId },
+          { patterns: 1, gameUuid: 1 },
+        ).lean(),
+      ]);
 
       if (cached) {
         initialAnalysis = {
@@ -172,6 +179,25 @@ export default async function GamePage({ searchParams }: GamePageProps) {
         // mark stale when stored version is behind the current pipeline version
         isStale = ((cached.analysisVersion as number | undefined) ?? 0) < CURRENT_VERSION;
       }
+
+      // derive top focus tag from all games (min 2 games required)
+      const tagCount = new Map<string, number>();
+      allAnalyzed.forEach(g => {
+        const patterns = (g.patterns ?? []) as Pattern[];
+        const seenTags = new Set<string>();
+        patterns.forEach(p => {
+          if (!seenTags.has(p.tag)) {
+            seenTags.add(p.tag);
+            tagCount.set(p.tag, (tagCount.get(p.tag) ?? 0) + 1);
+          }
+        });
+      });
+      let topTag = '';
+      let topCount = 0;
+      tagCount.forEach((count, tag) => {
+        if (count > topCount) { topCount = count; topTag = tag; }
+      });
+      if (topCount >= 2) primaryFocusTag = topTag;
     } catch {
       // non-fatal — page renders with analyze button if db unavailable
     }
@@ -210,6 +236,7 @@ export default async function GamePage({ searchParams }: GamePageProps) {
           isWhite={game.isWhite}
           archiveYear={archiveYear}
           archiveMonth={archiveMonth}
+          primaryFocusTag={primaryFocusTag}
         />
       </div>
     </main>

@@ -23,7 +23,79 @@ type AnalysisPanelProps = {
   playerSide: 'white' | 'black';
   // accuracy % per side — null until analysis runs
   accuracy?: { player: number; opponent: number } | null;
+  // user's top pattern tag — shows focus feedback banner when present
+  primaryFocusTag?: string;
 };
+
+// human-readable label for each focus tag
+const FOCUS_LABEL: Record<string, string> = {
+  tactics:        'tactics',
+  opening:        'opening',
+  endgame:        'endgame technique',
+  strategy:       'strategic thinking',
+  'time-trouble': 'time management',
+  'king-safety':  'king safety',
+  calculation:    'calculation',
+};
+
+function FocusCheckBanner({
+  primaryFocusTag,
+  patterns,
+  turningPoints,
+  playerSide,
+}: {
+  primaryFocusTag: string;
+  patterns: import('./types').Pattern[];
+  turningPoints: TurningPoint[];
+  playerSide: 'white' | 'black';
+}) {
+  const label = FOCUS_LABEL[primaryFocusTag] ?? primaryFocusTag;
+  const focusPattern = patterns.find(p => p.tag === primaryFocusTag);
+
+  if (!focusPattern) {
+    return (
+      <div className="rounded-lg border border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/30 px-3 py-2.5">
+        <p className="text-sm font-medium text-green-700 dark:text-green-400">
+          ✓ no {label} errors this game
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          your coaching focus area didn't show up — keep it up.
+        </p>
+      </div>
+    );
+  }
+
+  // filter evidenceMoves to player-side TPs only
+  const focusMoves = focusPattern.evidenceMoves.filter(moveNum =>
+    turningPoints.some(tp => tp.moveNumber === moveNum && tp.side === playerSide),
+  );
+
+  if (focusMoves.length === 0) {
+    return (
+      <div className="rounded-lg border border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950/30 px-3 py-2.5">
+        <p className="text-sm font-medium text-green-700 dark:text-green-400">
+          ✓ no {label} errors this game
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          your coaching focus area didn't show up — keep it up.
+        </p>
+      </div>
+    );
+  }
+
+  const moveList = focusMoves.join(', ');
+  const n = focusMoves.length;
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 px-3 py-2.5">
+      <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+        your {label} focus came up {n} time{n > 1 ? 's' : ''} this game
+      </p>
+      <p className="text-xs text-muted-foreground mt-0.5">
+        move{n > 1 ? 's' : ''} {moveList} — practice these in drills to build the habit.
+      </p>
+    </div>
+  );
+}
 
 // ── game narrative ──────────────────────────────────────────────────────────
 // produces a 1-2 sentence plain-english summary of the game arc
@@ -76,6 +148,7 @@ export function AnalysisPanel({
   onStartDrills,
   playerSide,
   accuracy,
+  primaryFocusTag,
 }: AnalysisPanelProps) {
   const router = useRouter();
 
@@ -93,6 +166,16 @@ export function AnalysisPanel({
           <div className="rounded-lg border bg-muted/30 px-3 py-2.5 text-sm text-foreground">
             {buildNarrative(analysisState.result.turningPoints, playerSide)}
           </div>
+
+          {/* focus feedback — shows if the user's primary weakness showed up this game */}
+          {primaryFocusTag && (
+            <FocusCheckBanner
+              primaryFocusTag={primaryFocusTag}
+              patterns={analysisState.result.patterns}
+              turningPoints={analysisState.result.turningPoints}
+              playerSide={playerSide}
+            />
+          )}
 
           {/* accuracy scores — the headline metric players care about most */}
           {accuracy ? (
